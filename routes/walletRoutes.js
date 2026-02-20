@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { Cashfree, CFEnvironment } = require("cashfree-pg");
 
-// ✅ Correct SDK Initialization (NEW METHOD)
+// ✅ Correct SDK Initialization
 Cashfree.XClientId = process.env.CASHFREE_APP_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
 Cashfree.XEnvironment =
@@ -28,8 +28,8 @@ router.post("/create-order", async (req, res) => {
       }
     };
 
-    // ✅ Use Cashfree directly (NOT new instance)
-    const response = await Cashfree.PGCreateOrder(orderRequest);
+    // ✅ Correct order creation method
+    const response = await Cashfree.PG.orders.create(orderRequest);
 
     return res.json({
       payment_session_id: response.data.payment_session_id,
