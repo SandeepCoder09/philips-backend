@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("path");
 const connectDB = require("./config/db");
+const cors = require("cors");   // ✅ ADD THIS
 require("dotenv").config();
 
 const app = express();
@@ -8,12 +9,19 @@ const app = express();
 // Connect Database
 connectDB();
 
+// ✅ CORS FIX
+app.use(cors({
+  origin: "*",   // allow all origins (for now)
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+
 // Middleware
 app.use(express.json());
 
 app.get("/", (req, res) => {
-    res.send("SERVER IS WORKING");
-  });
+  res.send("SERVER IS WORKING");
+});
 
 // API Routes
 app.use("/api/auth", require("./routes/authRoutes"));
