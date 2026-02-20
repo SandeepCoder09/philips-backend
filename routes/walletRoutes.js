@@ -2,20 +2,18 @@ const express = require("express");
 const router = express.Router();
 const axios = require("axios");
 const Transaction = require("../models/Transaction");
+const authMiddleware = require("../middleware/authMiddleware");
 
 // =====================================================
 // CREATE CASHFREE ORDER (Recharge)
 // =====================================================
-router.post("/create-order", async (req, res) => {
+router.post("/create-order", authMiddleware, async (req, res) => {
   try {
-    const { amount, userId } = req.body;
+    const { amount } = req.body;
+    const userId = req.user.id;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
-    }
-
-    if (!userId) {
-      return res.status(400).json({ message: "User ID required" });
     }
 
     const orderId = "order_" + Date.now();
@@ -43,9 +41,7 @@ router.post("/create-order", async (req, res) => {
       }
     );
 
-    // =====================================
-    // SAVE TRANSACTION AS PENDING
-    // =====================================
+    // Save transaction as pending
     await Transaction.create({
       userId,
       orderId,
@@ -69,16 +65,19 @@ router.post("/create-order", async (req, res) => {
   }
 });
 
+
 // =====================================================
-// GET USER TRANSACTION HISTORY
+// GET LOGGED-IN USER TRANSACTION HISTORY
 // =====================================================
-router.get("/transactions/:userId", async (req, res) => {
+router.get("/transactions", authMiddleware, async (req, res) => {
   try {
-    const transactions = await Transaction.find({
-      userId: req.params.userId
-    }).sort({ createdAt: -1 });
+    const userId = req.user.id;
+
+    const transactions = await Transaction.find({ userId })
+      .sort({ createdAt: -1 });
 
     return res.json(transactions);
+
   } catch (error) {
     console.error("Transaction fetch error:", error.message);
 
@@ -88,15 +87,18 @@ router.get("/transactions/:userId", async (req, res) => {
   }
 });
 
+
 // =====================================================
 // UPDATE TRANSACTION STATUS (After Payment Success)
 // =====================================================
-router.post("/update-status", async (req, res) => {
+router.post("/update-status", authMiddleware, async (req, res) => {
   try {
     const { orderId, status } = req.body;
 
     if (!orderId || !status) {
-      return res.status(400).json({ message: "Order ID and status required" });
+      return res.status(400).json({
+        message: "Order ID and status required"
+      });
     }
 
     await Transaction.findOneAndUpdate(
@@ -104,7 +106,9 @@ router.post("/update-status", async (req, res) => {
       { status }
     );
 
-    return res.json({ message: "Transaction updated successfully" });
+    return res.json({
+      message: "Transaction updated successfully"
+    });
 
   } catch (error) {
     console.error("Update error:", error.message);
