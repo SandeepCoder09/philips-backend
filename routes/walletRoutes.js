@@ -2,13 +2,13 @@ const express = require("express");
 const router = express.Router();
 const { Cashfree, CFEnvironment } = require("cashfree-pg");
 
-const cashfree = new Cashfree(
-  process.env.CASHFREE_APP_ID,
-  process.env.CASHFREE_SECRET_KEY,
+// ✅ Correct SDK Initialization (NEW METHOD)
+Cashfree.XClientId = process.env.CASHFREE_APP_ID;
+Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
+Cashfree.XEnvironment =
   process.env.CASHFREE_ENV === "PRODUCTION"
     ? CFEnvironment.PRODUCTION
-    : CFEnvironment.SANDBOX
-);
+    : CFEnvironment.SANDBOX;
 
 router.post("/create-order", async (req, res) => {
   try {
@@ -28,18 +28,20 @@ router.post("/create-order", async (req, res) => {
       }
     };
 
-    const response = await cashfree.PGCreateOrder(orderRequest);
+    // ✅ Use Cashfree directly (NOT new instance)
+    const response = await Cashfree.PGCreateOrder(orderRequest);
 
-    res.json({
+    return res.json({
       payment_session_id: response.data.payment_session_id,
       order_id: orderRequest.order_id
     });
 
   } catch (error) {
-    console.error("Cashfree error:", error);
-    res.status(500).json({
+    console.error("Cashfree error:", error.response?.data || error.message);
+
+    return res.status(500).json({
       message: "Order creation failed",
-      error: error.message
+      error: error.response?.data || error.message
     });
   }
 });
