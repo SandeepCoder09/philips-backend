@@ -1,16 +1,6 @@
 const express = require("express");
 const router = express.Router();
-
-const { Cashfree, CFEnvironment } = require("cashfree-pg");
-
-// ✅ Correct initialization for your installed version
-const cashfree = new Cashfree(
-  process.env.CASHFREE_APP_ID,
-  process.env.CASHFREE_SECRET_KEY,
-  process.env.CASHFREE_ENV === "PRODUCTION"
-    ? CFEnvironment.PRODUCTION
-    : CFEnvironment.SANDBOX
-);
+const axios = require("axios");
 
 router.post("/create-order", async (req, res) => {
   try {
@@ -30,12 +20,22 @@ router.post("/create-order", async (req, res) => {
       }
     };
 
-    // ✅ Correct method for your version
-    const response = await cashfree.PGCreateOrder(orderRequest);
+    const response = await axios.post(
+      "https://api.cashfree.com/pg/orders",
+      orderRequest,
+      {
+        headers: {
+          "x-client-id": process.env.CASHFREE_APP_ID,
+          "x-client-secret": process.env.CASHFREE_SECRET_KEY,
+          "x-api-version": "2023-08-01",
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
     return res.json({
       payment_session_id: response.data.payment_session_id,
-      order_id: orderRequest.order_id
+      order_id: response.data.order_id
     });
 
   } catch (error) {
