@@ -43,7 +43,7 @@ app.use("/api/admin", require("./routes/adminRoutes"));
 // ============================
 // Serve Frontend (Optional)
 // ============================
-app.use(express.static(path.join(__dirname, "../")));
+// app.use(express.static(path.join(__dirname, "../")));
 
 // ============================
 // Start Server
