@@ -60,10 +60,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error("Cashfree error:", error.response?.data || error.message);
-
-    return res.status(500).json({
-      message: "Order creation failed"
-    });
+    return res.status(500).json({ message: "Order creation failed" });
   }
 });
 
@@ -96,7 +93,7 @@ router.post("/update-status", authMiddleware, async (req, res) => {
     transaction.status = status;
     await transaction.save();
 
-    // 🔥 Add balance if recharge success
+    // 🔥 Credit wallet on recharge success
     if (status === "success" && transaction.type === "recharge") {
       await User.findByIdAndUpdate(
         transaction.userId,
@@ -110,7 +107,6 @@ router.post("/update-status", authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error("Update error:", error.message);
-
     return res.status(500).json({
       message: "Error updating transaction"
     });
@@ -119,17 +115,24 @@ router.post("/update-status", authMiddleware, async (req, res) => {
 
 
 // =====================================================
-// GET WALLET BALANCE
+// GET WALLET BALANCE (SAFE VERSION)
 // =====================================================
 router.get("/balance", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("walletBalance");
 
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
     return res.json({
-      balance: user.walletBalance
+      balance: user.walletBalance || 0
     });
 
   } catch (error) {
+    console.error("Balance error:", error.message);
     return res.status(500).json({
       message: "Error fetching balance"
     });
@@ -149,6 +152,7 @@ router.get("/transactions", authMiddleware, async (req, res) => {
     return res.json(transactions);
 
   } catch (error) {
+    console.error("Transaction error:", error.message);
     return res.status(500).json({
       message: "Error fetching transactions"
     });
@@ -191,6 +195,7 @@ router.post("/bind-bank", authMiddleware, async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Bind bank error:", error.message);
     return res.status(500).json({
       message: "Error binding bank"
     });
@@ -211,7 +216,7 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
       });
     }
 
-    // 🔒 Atomic balance check + deduction
+    // 🔒 Atomic deduction (prevents double withdraw)
     const user = await User.findOneAndUpdate(
       {
         _id: req.user.id,
@@ -235,7 +240,7 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     });
 
     if (!bank) {
-      // refund instantly if bank not approved
+      // refund if bank not approved
       await User.findByIdAndUpdate(
         req.user.id,
         { $inc: { walletBalance: amount } }
@@ -264,7 +269,6 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error("Withdraw error:", error.message);
-
     return res.status(500).json({
       message: "Withdraw failed"
     });
