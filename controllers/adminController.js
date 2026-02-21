@@ -1,18 +1,22 @@
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
-const BankAccount = require("../models/BankAccount");
+const Bank = require("../models/Bank");
 
-// Get all users
+// ==============================
+// Get All Users
+// ==============================
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find().select("-password");
     res.json(users);
   } catch (error) {
-    res.status(500).json({ message: "Error fetching users" });
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
-// Get all transactions
+// ==============================
+// Get All Transactions
+// ==============================
 exports.getAllTransactions = async (req, res) => {
   try {
     const transactions = await Transaction.find()
@@ -21,19 +25,18 @@ exports.getAllTransactions = async (req, res) => {
 
     res.json(transactions);
   } catch (error) {
-    res.status(500).json({ message: "Error fetching transactions" });
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
-// Get all bank accounts
+// ==============================
+// Get All Banks
+// ==============================
 exports.getAllBanks = async (req, res) => {
   try {
-    const banks = await BankAccount.find()
-      .populate("userId", "name email")
-      .sort({ createdAt: -1 });
-
+    const banks = await Bank.find();
     res.json(banks);
   } catch (error) {
-    res.status(500).json({ message: "Error fetching banks" });
+    res.status(500).json({ message: "Server Error" });
   }
 };
