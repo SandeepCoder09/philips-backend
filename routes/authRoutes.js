@@ -51,4 +51,23 @@ router.post("/admin-login", async (req, res) => {
   }
 });
 
+// ================= HASH GENERATOR (TEMP - REMOVE LATER) =================
+router.post("/generate-hash", async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ message: "Password required" });
+    }
+
+    const bcrypt = require("bcryptjs");
+    const hash = await bcrypt.hash(password, 10);
+
+    res.json({ hash });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error generating hash" });
+  }
+});
+
 module.exports = router;
