@@ -2,56 +2,21 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true
-    },
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    mobile: { type: String, required: true },
 
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true
-    },
+    walletBalance: { type: Number, default: 0 },
 
-    password: {
-      type: String,
-      required: true
-    },
+    inviteCode: { type: String },
+    referredBy: { type: String },
 
-    mobile: {
-      type: String,
-      required: true,
-      unique: true
-    },
-
-    // 🔹 Wallet Balance System
-    walletBalance: {
-      type: Number,
-      default: 0
-    },
-
-    // 🔹 Admin Control
-    isAdmin: {
-      type: Boolean,
-      default: false
-    },
-
-    // 🔹 Referral System
-    inviteCode: {
-      type: String,
-      unique: true,
-      sparse: true
-    },
-
-    referredBy: {
-      type: String
-    }
-
+    isAdmin: { type: Boolean, default: false }
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("User", userSchema);
+module.exports =
+  mongoose.models.User ||
+  mongoose.model("User", userSchema);

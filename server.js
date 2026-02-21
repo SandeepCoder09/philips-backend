@@ -37,7 +37,8 @@ app.get("/", (req, res) => {
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/referral", require("./routes/referralRoutes"));
-app.use("/api/wallet", require("./routes/walletRoutes")); // ✅ THIS WAS MISSING
+app.use("/api/wallet", require("./routes/walletRoutes"));
+app.use("/api/admin", require("./routes/adminRoutes"));
 
 // ============================
 // Serve Frontend (Optional)

@@ -1,40 +1,36 @@
 const mongoose = require("mongoose");
 
-const userSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true
+const transactionSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true
+    },
+
+    orderId: {
+      type: String,
+      required: true
+    },
+
+    amount: {
+      type: Number,
+      required: true
+    },
+
+    type: {
+      type: String, // recharge / withdraw
+      required: true
+    },
+
+    status: {
+      type: String, // pending / success / rejected / processing
+      default: "pending"
+    }
   },
+  { timestamps: true }
+);
 
-  email: {
-    type: String,
-    required: true,
-    unique: true
-  },
-
-  password: {
-    type: String,
-    required: true
-  },
-
-  mobile: {
-    type: String,
-    required: true
-  },
-
-  walletBalance: {
-    type: Number,
-    default: 0
-  },
-
-  inviteCode: {
-    type: String
-  },
-
-  referredBy: {
-    type: String
-  }
-
-}, { timestamps: true });
-
-module.exports = mongoose.model("User", userSchema);
+module.exports =
+  mongoose.models.Transaction ||
+  mongoose.model("Transaction", transactionSchema);
