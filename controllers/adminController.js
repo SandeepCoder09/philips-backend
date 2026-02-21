@@ -7,9 +7,13 @@ const Bank = require("../models/BankAccount");
 // ==============================
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const users = await User.find()
+      .select("-password")
+      .sort({ createdAt: -1 });
+
     res.json(users);
   } catch (error) {
+    console.error("Get Users Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -20,11 +24,12 @@ exports.getAllUsers = async (req, res) => {
 exports.getAllTransactions = async (req, res) => {
   try {
     const transactions = await Transaction.find()
-      .populate("userId", "name email")
+      .populate("userId", "name email")   // 🔥 Important
       .sort({ createdAt: -1 });
 
     res.json(transactions);
   } catch (error) {
+    console.error("Get Transactions Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -34,9 +39,13 @@ exports.getAllTransactions = async (req, res) => {
 // ==============================
 exports.getAllBanks = async (req, res) => {
   try {
-    const banks = await Bank.find();
+    const banks = await Bank.find()
+      .populate("userId", "name email")   // 🔥 Fix for showing user name
+      .sort({ createdAt: -1 });
+
     res.json(banks);
   } catch (error) {
+    console.error("Get Banks Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
