@@ -1,6 +1,6 @@
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
-const Bank = require("../models/Bank");
+const Bank = require("../models/BankAccount");
 
 // ==============================
 // Get All Users
