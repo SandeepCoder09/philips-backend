@@ -6,23 +6,29 @@ const transactionSchema = new mongoose.Schema({
     ref: "User",
     required: true
   },
+
   orderId: {
-    type: String
+    type: String,
+    required: true
   },
+
   type: {
     type: String,
     enum: ["recharge", "withdraw"],
     required: true
   },
+
   amount: {
     type: Number,
     required: true
   },
+
   status: {
     type: String,
-    enum: ["pending", "success", "failed"],
+    enum: ["success", "pending", "processing", "rejected", "failed"],
     default: "pending"
   }
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("Transaction", transactionSchema);
