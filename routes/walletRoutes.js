@@ -161,43 +161,57 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 
 
 // =====================================================
-// BIND BANK ACCOUNT
+// BIND BANK ACCOUNT (AUTO APPROVE + MULTIPLE SUPPORT)
 // =====================================================
 router.post("/bind-bank", authMiddleware, async (req, res) => {
   try {
     const { accountNumber, ifsc, holderName, bankName } = req.body;
+    const userId = req.user.id;
 
+    // Basic validation
     if (!accountNumber || !ifsc || !holderName || !bankName) {
-      return res.status(400).json({ message: "All fields required" });
-    }
-
-    const existing = await BankAccount.findOne({
-      userId: req.user.id
-    });
-
-    if (existing) {
       return res.status(400).json({
-        message: "Bank already linked"
+        message: "All fields are required"
       });
     }
 
-    await BankAccount.create({
-      userId: req.user.id,
+    // Prevent same account number duplicate
+    const existingAccount = await BankAccount.findOne({
+      userId,
+      accountNumber
+    });
+
+    if (existingAccount) {
+      return res.status(400).json({
+        message: "This bank account is already added"
+      });
+    }
+
+    // Create bank (auto-approved system)
+    const newBank = await BankAccount.create({
+      userId,
       accountNumber,
-      ifsc,
+      ifsc: ifsc.toUpperCase(),
       holderName,
       bankName
     });
 
-    return res.json({
+    return res.status(201).json({
       success: true,
-      message: "Bank submitted for approval"
+      message: "Bank linked successfully",
+      bank: {
+        id: newBank._id,
+        bankName: newBank.bankName,
+        accountNumber: "****" + accountNumber.slice(-4),
+        ifsc: newBank.ifsc
+      }
     });
 
   } catch (error) {
     console.error("Bind bank error:", error.message);
+
     return res.status(500).json({
-      message: "Error binding bank"
+      message: "Failed to bind bank"
     });
   }
 });
