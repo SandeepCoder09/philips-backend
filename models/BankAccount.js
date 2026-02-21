@@ -5,8 +5,7 @@ const bankSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
-      unique: true
+      required: true
     },
     accountNumber: {
       type: String,
@@ -23,10 +22,6 @@ const bankSchema = new mongoose.Schema(
     bankName: {
       type: String,
       required: true
-    },
-    approved: {
-      type: Boolean,
-      default: true
     }
   },
   { timestamps: true }
