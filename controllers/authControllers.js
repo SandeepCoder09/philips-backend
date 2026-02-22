@@ -1,30 +1,28 @@
 const User = require("../models/User");
+const Counter = require("../models/Counter");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const generateInviteCode = require("../utils/generateInviteCode");
 
 // ======================
 // REGISTER USER
 // ======================
 const registerUser = async (req, res) => {
   try {
-    const { name, email, mobile, password } = req.body;
+    const { name, mobile, password, inviteCode } = req.body;
 
-    // Check required fields
-    if (!name || !email || !mobile || !password) {
+    // Validate required fields
+    if (!name || !mobile || !password) {
       return res.status(400).json({
-        message: "All fields (name, email, mobile, password) are required"
+        message: "Name, mobile and password are required"
       });
     }
 
-    // Check if user already exists (by mobile OR email)
-    const existingUser = await User.findOne({
-      $or: [{ mobile }, { email }]
-    });
+    // Check if user already exists
+    const existingUser = await User.findOne({ mobile });
 
     if (existingUser) {
       return res.status(400).json({
-        message: "User already exists"
+        message: "Mobile number already registered"
       });
     }
 
@@ -32,23 +30,44 @@ const registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Generate invite code
-    const inviteCode = generateInviteCode();
+    // 🔥 Atomic increment for userId (STARTS FROM 10000)
+    const counter = await Counter.findOneAndUpdate(
+      { name: "userId" },
+      { $inc: { value: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const newUserId = counter.value;
+
+    // Validate referral invite code (if provided)
+    let referredById = null;
+
+    if (inviteCode) {
+      const refUser = await User.findOne({ userId: Number(inviteCode) });
+
+      if (!refUser) {
+        return res.status(400).json({
+          message: "Invalid invite code"
+        });
+      }
+
+      referredById = refUser.userId;
+    }
 
     // Create new user
     const newUser = new User({
       name,
-      email,
       mobile,
       password: hashedPassword,
-      inviteCode
+      userId: newUserId,
+      referredById
     });
 
     await newUser.save();
 
     res.status(201).json({
       message: "User registered successfully",
-      inviteCode
+      userId: newUser.userId
     });
 
   } catch (error) {
@@ -99,9 +118,9 @@ const loginUser = async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email,
         mobile: user.mobile,
-        inviteCode: user.inviteCode
+        userId: user.userId,
+        walletBalance: user.walletBalance
       }
     });
 
