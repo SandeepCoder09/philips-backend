@@ -1,55 +1,70 @@
 const express = require("express");
 const path = require("path");
-const connectDB = require("./config/db");
 const cors = require("cors");
 require("dotenv").config();
 
+const connectDB = require("./config/db");
+
 const app = express();
 
-// ============================
-// Connect Database
-// ============================
+/* ============================
+   CONNECT DATABASE
+============================ */
 connectDB();
 
-// ============================
-// Middleware
-// ============================
+/* ============================
+   MIDDLEWARE
+============================ */
+
+// Parse JSON
 app.use(express.json());
 
+// CORS Configuration
 app.use(
   cors({
-    origin: "*", // allow all origins (can restrict later)
+    origin: "*", // 🔒 change to frontend URL in production
     methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// ============================
-// Health Check Route
-// ============================
+/* ============================
+   HEALTH CHECK
+============================ */
 app.get("/", (req, res) => {
-  res.send("SERVER IS WORKING");
+  res.status(200).json({ message: "SERVER IS WORKING 🚀" });
 });
 
-// ============================
-// API Routes
-// ============================
+/* ============================
+   API ROUTES
+============================ */
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/referral", require("./routes/referralRoutes"));
 app.use("/api/wallet", require("./routes/walletRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
+app.use("/api/products", require("./routes/products")); // ✅ NEW
 
-// ============================
-// Serve Frontend (Optional)
-// ============================
-// app.use(express.static(path.join(__dirname, "../")));
+/* ============================
+   404 HANDLER
+============================ */
+app.use((req, res) => {
+  res.status(404).json({ message: "Route Not Found" });
+});
 
-// ============================
-// Start Server
-// ============================
+/* ============================
+   GLOBAL ERROR HANDLER
+============================ */
+app.use((err, req, res, next) => {
+  console.error("❌ Error:", err.message);
+  res.status(500).json({ message: "Internal Server Error" });
+});
+
+/* ============================
+   START SERVER
+============================ */
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });

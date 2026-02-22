@@ -4,13 +4,15 @@ const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true
+      required: true,
+      trim: true
     },
 
     mobile: {
       type: String,
       required: true,
-      unique: true
+      unique: true,
+      trim: true
     },
 
     password: {
@@ -18,19 +20,22 @@ const userSchema = new mongoose.Schema(
       required: true
     },
 
+    // 💰 WALLET SYSTEM
     walletBalance: {
       type: Number,
-      default: 0
+      default: 0,
+      min: 0
     },
 
-    // ===== NUMERIC USER ID SYSTEM =====
+    // 🔢 NUMERIC USER ID SYSTEM
     userId: {
       type: Number,
       unique: true,
-      required: true
+      required: true,
+      index: true
     },
 
-    // ===== REFERRAL SYSTEM =====
+    // 🎁 REFERRAL SYSTEM
     referredById: {
       type: Number,
       default: null
@@ -41,7 +46,9 @@ const userSchema = new mongoose.Schema(
       default: false
     }
   },
-  { timestamps: true }
+  {
+    timestamps: true
+  }
 );
 
 module.exports =

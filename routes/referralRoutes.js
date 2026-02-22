@@ -9,7 +9,6 @@ const User = require("../models/User");
 router.get("/dashboard", authMiddleware, async (req, res) => {
   try {
 
-    // Logged-in user
     const currentUser = await User.findById(req.user.id);
 
     if (!currentUser) {
@@ -18,22 +17,20 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
       });
     }
 
-    // Direct referrals (Level 1)
+    // 🔥 Direct referrals (Level 1)
     const directReferrals = await User.find({
       referredById: currentUser.userId
-    }).select("name mobile userId walletBalance createdAt");
+    });
 
-    const teamSize = directReferrals.length;
-
-    // Future: calculate referral income here
-    const totalReferralIncome = 0;
+    const directCount = directReferrals.length;
 
     res.json({
-      userId: currentUser.userId,
-      teamSize,
-      directReferralCount: teamSize,
-      totalReferralIncome,
-      referrals: directReferrals
+      activeUsers: directCount,                // frontend expects this
+      teamSize: directCount,                  // frontend expects this
+      totalPromotionIncome: 0,                // match frontend name
+      yesterdayIncome: 0,                     // match frontend name
+      directReferralNumber: directCount,      // match frontend name
+      invitationReward: 0                     // match frontend name
     });
 
   } catch (error) {
