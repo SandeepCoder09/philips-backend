@@ -17,7 +17,7 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists
+    // Check if mobile already exists
     const existingUser = await User.findOne({ mobile });
 
     if (existingUser) {
@@ -30,20 +30,33 @@ const registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 🔥 Atomic increment for userId (STARTS FROM 10000)
-    const counter = await Counter.findOneAndUpdate(
-      { name: "userId" },
-      { $inc: { value: 1 } },
-      { new: true, upsert: true }
-    );
+    // ===============================
+    // SAFE COUNTER INITIALIZATION
+    // ===============================
+    let counter = await Counter.findOne({ name: "userId" });
+
+    if (!counter) {
+      counter = await Counter.create({
+        name: "userId",
+        value: 9999 // so first user becomes 10000
+      });
+    }
+
+    // Atomic increment
+    counter.value += 1;
+    await counter.save();
 
     const newUserId = counter.value;
 
-    // Validate referral invite code (if provided)
+    // ===============================
+    // VALIDATE REFERRAL (IF PROVIDED)
+    // ===============================
     let referredById = null;
 
     if (inviteCode) {
-      const refUser = await User.findOne({ userId: Number(inviteCode) });
+      const refUser = await User.findOne({
+        userId: Number(inviteCode)
+      });
 
       if (!refUser) {
         return res.status(400).json({
@@ -54,7 +67,9 @@ const registerUser = async (req, res) => {
       referredById = refUser.userId;
     }
 
-    // Create new user
+    // ===============================
+    // CREATE NEW USER
+    // ===============================
     const newUser = new User({
       name,
       mobile,
