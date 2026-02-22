@@ -20,6 +20,14 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
+    const user = await User.findById(userId);
+
+    if (!user || !user.phone) {
+      return res.status(400).json({
+        message: "User phone number not found"
+      });
+    }
+
     const orderId = "order_" + Date.now();
 
     const orderRequest = {
@@ -28,7 +36,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       order_id: orderId,
       customer_details: {
         customer_id: userId,
-        customer_phone: "9999999999"
+        customer_phone: user.phone
       }
     };
 
@@ -122,13 +130,20 @@ router.get("/balance", authMiddleware, async (req, res) => {
 
 
 // =====================================================
-// GET USER TRANSACTIONS
+// GET USER TRANSACTIONS (WITH FILTER SUPPORT)
 // =====================================================
 router.get("/transactions", authMiddleware, async (req, res) => {
   try {
-    const transactions = await Transaction.find({
-      userId: req.user.id
-    }).sort({ createdAt: -1 });
+    const { type } = req.query;
+
+    const filter = { userId: req.user.id };
+
+    if (type && type !== "all") {
+      filter.type = type;
+    }
+
+    const transactions = await Transaction.find(filter)
+      .sort({ createdAt: -1 });
 
     return res.json(transactions);
 
@@ -141,7 +156,7 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 
 
 // =====================================================
-// BIND BANK ACCOUNT (AUTO ACTIVE)
+// BIND BANK ACCOUNT
 // =====================================================
 router.post("/bind-bank", authMiddleware, async (req, res) => {
   try {
@@ -205,7 +220,7 @@ router.get("/banks", authMiddleware, async (req, res) => {
 
 
 // =====================================================
-// WITHDRAW (REQUIRES ADMIN APPROVAL)
+// WITHDRAW REQUEST
 // =====================================================
 router.post("/withdraw", authMiddleware, async (req, res) => {
   try {
@@ -289,7 +304,6 @@ router.post("/withdraw-action", async (req, res) => {
     if (action === "approve") {
       transaction.status = "success";
       await transaction.save();
-
       return res.json({ message: "Withdraw approved" });
     }
 
@@ -315,3 +329,5 @@ router.post("/withdraw-action", async (req, res) => {
 });
 
 module.exports = router;
+
+// test deploy test
