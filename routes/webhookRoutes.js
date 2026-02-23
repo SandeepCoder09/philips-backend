@@ -12,7 +12,7 @@ router.post("/cashfree", async (req, res) => {
   try {
 
     const signature = req.headers["x-webhook-signature"];
-    const payload = JSON.stringify(req.body);
+    const payload = req.body;
 
     // 🔐 Verify signature
     const expectedSignature = crypto
@@ -59,5 +59,3 @@ router.post("/cashfree", async (req, res) => {
 });
 
 module.exports = router;
-
-//test deploy

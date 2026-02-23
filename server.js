@@ -28,7 +28,7 @@ app.use(
    (Must be before express.json)
 ============================ */
 app.use(
-  "/api/webhook/cashfree",
+  "/api/webhook",
   express.raw({ type: "*/*" })
 );
 
@@ -85,5 +85,3 @@ app.listen(PORT, () => {
 
   console.log("💰 Earning Engine Activated");
 });
-
-//test deploy
