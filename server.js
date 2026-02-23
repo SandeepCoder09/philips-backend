@@ -1,9 +1,9 @@
 const express = require("express");
-const path = require("path");
 const cors = require("cors");
-require("dotenv").config();
-
+const dotenv = require("dotenv");
 const connectDB = require("./config/db");
+
+dotenv.config();
 
 const app = express();
 
@@ -13,20 +13,29 @@ const app = express();
 connectDB();
 
 /* ============================
-   MIDDLEWARE
+   CORS CONFIGURATION
 ============================ */
-
-// Parse JSON
-app.use(express.json());
-
-// CORS Configuration
 app.use(
   cors({
-    origin: "*", // 🔒 change to frontend URL in production
+    origin: process.env.FRONTEND_URL || "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+/* ============================
+   WEBHOOK RAW BODY SUPPORT
+   (Must be before express.json)
+============================ */
+app.use(
+  "/api/webhook/cashfree",
+  express.raw({ type: "*/*" })
+);
+
+/* ============================
+   JSON PARSER
+============================ */
+app.use(express.json());
 
 /* ============================
    HEALTH CHECK
@@ -43,7 +52,10 @@ app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/referral", require("./routes/referralRoutes"));
 app.use("/api/wallet", require("./routes/walletRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
-app.use("/api/products", require("./routes/products")); // ✅ NEW
+app.use("/api/products", require("./routes/products"));
+
+// 🔐 Webhook Route (Cashfree)
+app.use("/api/webhook", require("./routes/webhookRoutes"));
 
 /* ============================
    404 HANDLER
@@ -67,4 +79,9 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+
+  // Activate earning engine safely
+  require("./cron/earningEngine");
+
+  console.log("💰 Earning Engine Activated");
 });
