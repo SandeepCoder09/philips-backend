@@ -37,6 +37,4 @@ const giftCodeSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-giftCodeSchema.index({ code: 1 });
-
 module.exports = mongoose.model("GiftCode", giftCodeSchema);
