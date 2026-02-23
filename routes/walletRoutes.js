@@ -274,6 +274,12 @@ router.post("/withdraw-action", adminMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Already processed" });
     }
 
+    if (action === "under review") {
+      transaction.status = "under review";
+      await transaction.save();
+      return res.json({ message: "Marked as Under Review" });
+    } 
+
     if (action === "approve") {
       transaction.status = "success";
       await transaction.save();
