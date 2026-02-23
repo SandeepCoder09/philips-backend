@@ -9,23 +9,29 @@ const adminMiddleware = require("../middleware/adminMiddleware");
 const authMiddleware = require("../middleware/authMiddleware");
 
 
-// =====================================================
-// STEP 2 — CREATE GIFT CODE (ADMIN ONLY)
-// =====================================================
+/* =====================================================
+   CREATE GIFT (ADMIN)
+===================================================== */
 router.post("/create", adminMiddleware, async (req, res) => {
   try {
 
-    const { code, maxUsers, expiresAt } = req.body;
+    const { code, amountPerUser, totalAmount } = req.body;
 
-    if (!code || !maxUsers) {
+    if (!code || !amountPerUser || !totalAmount) {
       return res.status(400).json({
-        message: "Code and maxUsers are required"
+        message: "All fields are required"
       });
     }
 
-    if (maxUsers <= 0) {
+    if (amountPerUser <= 0 || totalAmount <= 0) {
       return res.status(400).json({
-        message: "maxUsers must be greater than 0"
+        message: "Amounts must be greater than 0"
+      });
+    }
+
+    if (amountPerUser > totalAmount) {
+      return res.status(400).json({
+        message: "Per user amount cannot exceed total amount"
       });
     }
 
@@ -39,30 +45,33 @@ router.post("/create", adminMiddleware, async (req, res) => {
       });
     }
 
+    // Valid for 1 hour only
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
     const gift = await GiftCode.create({
       code: formattedCode,
-      maxUsers,
-      expiresAt: expiresAt || null,
+      amountPerUser,
+      totalAmount,
+      remainingAmount: totalAmount,
+      expiresAt,
       active: true
     });
 
     res.status(201).json({
-      message: "Gift code created successfully",
+      message: "Gift created successfully",
       gift
     });
 
   } catch (error) {
-    console.error("Gift Create Error:", error);
-    res.status(500).json({
-      message: "Server Error"
-    });
+    console.error(error);
+    res.status(500).json({ message: "Server Error" });
   }
 });
 
 
-// =====================================================
-// STEP 3 — CLAIM GIFT CODE (USER)
-// =====================================================
+/* =====================================================
+   CLAIM GIFT (USER)
+===================================================== */
 router.post("/claim", authMiddleware, async (req, res) => {
   try {
 
@@ -71,94 +80,82 @@ router.post("/claim", authMiddleware, async (req, res) => {
 
     if (!code) {
       return res.status(400).json({
-        message: "Gift code is required"
+        message: "Gift code required"
       });
     }
 
-    const formattedCode = code.toUpperCase().trim();
-
     const gift = await GiftCode.findOne({
-      code: formattedCode,
+      code: code.toUpperCase().trim(),
       active: true
     });
 
     if (!gift) {
       return res.status(404).json({
-        message: "Invalid or inactive gift code"
+        message: "Invalid Gift Code"
       });
     }
 
-    // Expiry Check
-    if (gift.expiresAt && gift.expiresAt < new Date()) {
-      return res.status(400).json({
-        message: "Gift code has expired"
-      });
-    }
-
-    // Already claimed check
-    if (gift.usedBy.includes(userId)) {
-      return res.status(400).json({
-        message: "You have already claimed this gift"
-      });
-    }
-
-    // Max users limit check
-    if (gift.usedBy.length >= gift.maxUsers) {
+    // Expired check
+    if (gift.expiresAt < new Date()) {
       gift.active = false;
       await gift.save();
 
       return res.status(400).json({
-        message: "Gift code fully claimed"
+        message: "Gift Code Expired"
       });
     }
 
-    // 🎁 Generate random ₹1–₹10
-    const reward = Math.floor(Math.random() * 10) + 1;
-
-    // Update user wallet
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found"
+    // Already claimed check
+    if (gift.claimedUsers.includes(userId)) {
+      return res.status(400).json({
+        message: "You already collected this gift"
       });
     }
 
-    user.wallet += reward;
-    await user.save();
+    // Gift Over check
+    if (gift.remainingAmount < gift.amountPerUser) {
+      gift.active = false;
+      await gift.save();
 
-    // Add user to used list
-    gift.usedBy.push(userId);
+      return res.status(400).json({
+        message: "Gift Code Over"
+      });
+    }
 
-    // Auto deactivate if limit reached
-    if (gift.usedBy.length >= gift.maxUsers) {
+    // Deduct from pool
+    gift.remainingAmount -= gift.amountPerUser;
+    gift.claimedUsers.push(userId);
+
+    if (gift.remainingAmount < gift.amountPerUser) {
       gift.active = false;
     }
 
     await gift.save();
 
-    // Create transaction record
+    // Credit wallet
+    const user = await User.findById(userId);
+    user.wallet += gift.amountPerUser;
+    await user.save();
+
+    // Create transaction
     await Transaction.create({
       userId,
       orderId: "GIFT_" + Date.now(),
-      amount: reward,
+      amount: gift.amountPerUser,
       type: "earning",
       status: "success",
-      description: `Gift reward from code ${formattedCode}`
+      description: `Gift reward from ${gift.code}`
     });
 
     res.json({
-      message: `Congratulations! You won ₹${reward}`,
-      reward
+      message: `You received ₹${gift.amountPerUser}`,
+      amount: gift.amountPerUser
     });
 
   } catch (error) {
-    console.error("Gift Claim Error:", error);
-    res.status(500).json({
-      message: "Server Error"
-    });
+    console.error(error);
+    res.status(500).json({ message: "Server Error" });
   }
 });
-
 
 module.exports = router;
