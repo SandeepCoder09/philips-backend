@@ -13,6 +13,11 @@ const app = express();
 connectDB();
 
 /* ============================
+   SECURITY HEADERS (Basic Hardening)
+============================ */
+app.disable("x-powered-by");
+
+/* ============================
    CORS CONFIGURATION
 ============================ */
 app.use(
@@ -20,28 +25,34 @@ app.use(
     origin: process.env.FRONTEND_URL || "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
   })
 );
 
 /* ============================
    WEBHOOK RAW BODY SUPPORT
-   (Must be before express.json)
+   IMPORTANT: Must come BEFORE express.json()
+   Only apply to specific route
 ============================ */
 app.use(
-  "/api/webhook",
+  "/api/webhook/cashfree",
   express.raw({ type: "*/*" })
 );
 
 /* ============================
-   JSON PARSER
+   JSON BODY PARSER
 ============================ */
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 /* ============================
    HEALTH CHECK
 ============================ */
 app.get("/", (req, res) => {
-  res.status(200).json({ message: "SERVER IS WORKING 🚀" });
+  res.status(200).json({
+    status: "OK",
+    message: "SERVER IS WORKING 🚀",
+    timestamp: new Date()
+  });
 });
 
 /* ============================
@@ -53,23 +64,28 @@ app.use("/api/referral", require("./routes/referralRoutes"));
 app.use("/api/wallet", require("./routes/walletRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/products", require("./routes/products"));
-
-// 🔐 Webhook Route (Cashfree)
 app.use("/api/webhook", require("./routes/webhookRoutes"));
 
 /* ============================
    404 HANDLER
 ============================ */
 app.use((req, res) => {
-  res.status(404).json({ message: "Route Not Found" });
+  res.status(404).json({
+    success: false,
+    message: "Route Not Found"
+  });
 });
 
 /* ============================
    GLOBAL ERROR HANDLER
 ============================ */
 app.use((err, req, res, next) => {
-  console.error("❌ Error:", err.message);
-  res.status(500).json({ message: "Internal Server Error" });
+  console.error("❌ Global Error:", err);
+
+  res.status(err.status || 500).json({
+    success: false,
+    message: "Internal Server Error"
+  });
 });
 
 /* ============================
@@ -80,7 +96,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 
-  // Activate earning engine safely
+  // Activate earning engine after server starts
   require("./cron/earningEngine");
 
   console.log("💰 Earning Engine Activated");
