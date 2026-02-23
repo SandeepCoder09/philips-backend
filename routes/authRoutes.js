@@ -1,20 +1,28 @@
 const express = require("express");
 const router = express.Router();
 
-const { registerUser, loginUser } = require("../controllers/authControllers");
-
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+
 const User = require("../models/User");
+const { registerUser, loginUser } = require("../controllers/authControllers");
+
 
 // ================= USER ROUTES =================
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 
+
 // ================= ADMIN LOGIN =================
 router.post("/admin-login", async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password required"
+      });
+    }
 
     const user = await User.findOne({ email });
 
@@ -44,89 +52,48 @@ router.post("/admin-login", async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Admin login error:", error);
     res.status(500).json({
       message: "Server error"
     });
   }
 });
 
-// ================= HASH GENERATOR (TEMP - REMOVE LATER) =================
-router.post("/generate-hash", async (req, res) => {
+
+// ================= TEMP: CREATE ADMIN (DELETE AFTER USE) =================
+router.post("/create-admin", async (req, res) => {
   try {
-    const { password } = req.body;
 
-    if (!password) {
-      return res.status(400).json({ message: "Password required" });
+    const existing = await User.findOne({
+      email: "philipsfuturelighting@admin.com"
+    });
+
+    if (existing) {
+      return res.json({ message: "Admin already exists" });
     }
 
-    const bcrypt = require("bcryptjs");
-    const hash = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash("123456", 10);
 
-    res.json({ hash });
-
-  } catch (error) {
-    res.status(500).json({ message: "Error generating hash" });
-  }
-});
-
-// ================= ADMIN LOGIN =================
-router.post("/admin-login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-
-    if (!user || !user.isAdmin) {
-      return res.status(403).json({
-        message: "Not authorized as admin"
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(401).json({
-        message: "Invalid credentials"
-      });
-    }
-
-    const token = jwt.sign(
-      { id: user._id, isAdmin: true },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    const admin = await User.create({
+      name: "Super Admin",
+      email: "philipsfuturelighting@admin.com",
+      password: hashedPassword,
+      isAdmin: true,
+      wallet: 0
+    });
 
     res.json({
-      message: "Admin login successful",
-      token
+      message: "Admin created successfully",
+      admin
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Admin creation error:", error);
     res.status(500).json({
-      message: "Server error"
+      message: "Error creating admin"
     });
   }
 });
 
-// ================= HASH GENERATOR (TEMP - REMOVE LATER) =================
-router.post("/generate-hash", async (req, res) => {
-    try {
-      const { password } = req.body;
-  
-      if (!password) {
-        return res.status(400).json({ message: "Password required" });
-      }
-  
-      const bcrypt = require("bcryptjs");
-      const hash = await bcrypt.hash(password, 10);
-  
-      res.json({ hash });
-  
-    } catch (error) {
-      res.status(500).json({ message: "Error generating hash" });
-    }
-  });
 
 module.exports = router;
