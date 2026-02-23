@@ -34,8 +34,8 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       enum: [
         "pending",
-        "processing",
         "under_review",
+        "processing",
         "success",
         "rejected"
       ],

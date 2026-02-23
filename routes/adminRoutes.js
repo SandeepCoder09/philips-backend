@@ -6,35 +6,23 @@ const adminMiddleware = require("../middleware/adminMiddleware");
 const {
   getAllUsers,
   getAllTransactions,
-  getWithdrawRequests,
-  updateWithdrawStatus,
-  getAllBanks
+  getAllBanks,
+  getAllWithdraws,
+  updateWithdrawStatus
 } = require("../controllers/adminController");
 
 
-// ==============================
-// USERS
-// ==============================
+// ================= USERS =================
 router.get("/users", adminMiddleware, getAllUsers);
 
-
-// ==============================
-// TRANSACTIONS
-// ==============================
+// ================= TRANSACTIONS =================
 router.get("/transactions", adminMiddleware, getAllTransactions);
 
-
-// ==============================
-// WITHDRAW REQUESTS
-// ==============================
-router.get("/withdraws", adminMiddleware, getWithdrawRequests);
-router.put("/withdraw/:id", adminMiddleware, updateWithdrawStatus);
-
-
-// ==============================
-// BANKS
-// ==============================
+// ================= BANKS =================
 router.get("/banks", adminMiddleware, getAllBanks);
 
+// ================= WITHDRAWS =================
+router.get("/withdraws", adminMiddleware, getAllWithdraws);
+router.put("/withdraw/:id", adminMiddleware, updateWithdrawStatus);
 
 module.exports = router;
