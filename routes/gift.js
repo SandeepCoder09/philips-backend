@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
+const mongoose = require("mongoose");
 const GiftCode = require("../models/GiftCode");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
@@ -15,13 +16,16 @@ const authMiddleware = require("../middleware/authMiddleware");
 router.post("/create", adminMiddleware, async (req, res) => {
   try {
 
-    const { code, amountPerUser, totalAmount } = req.body;
+    let { code, amountPerUser, totalAmount } = req.body;
 
     if (!code || !amountPerUser || !totalAmount) {
       return res.status(400).json({
         message: "All fields are required"
       });
     }
+
+    amountPerUser = Number(amountPerUser);
+    totalAmount = Number(totalAmount);
 
     if (amountPerUser <= 0 || totalAmount <= 0) {
       return res.status(400).json({
@@ -45,7 +49,7 @@ router.post("/create", adminMiddleware, async (req, res) => {
       });
     }
 
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour validity
 
     const gift = await GiftCode.create({
       code: formattedCode,
@@ -63,7 +67,7 @@ router.post("/create", adminMiddleware, async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Create Gift Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -75,12 +79,18 @@ router.post("/create", adminMiddleware, async (req, res) => {
 router.get("/all", adminMiddleware, async (req, res) => {
   try {
 
+    // Auto deactivate expired gifts
+    await GiftCode.updateMany(
+      { expiresAt: { $lt: new Date() }, active: true },
+      { $set: { active: false } }
+    );
+
     const gifts = await GiftCode.find().sort({ createdAt: -1 });
 
     res.json(gifts);
 
   } catch (error) {
-    console.error(error);
+    console.error("Get Gifts Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -101,8 +111,10 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
+    const formattedCode = code.toUpperCase().trim();
+
     const gift = await GiftCode.findOne({
-      code: code.toUpperCase().trim(),
+      code: formattedCode,
       active: true
     });
 
@@ -112,6 +124,7 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
+    // Expired check
     if (gift.expiresAt < new Date()) {
       gift.active = false;
       await gift.save();
@@ -121,12 +134,18 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
-    if (gift.claimedUsers.includes(userId)) {
+    // Already claimed check (SAFE ObjectId compare)
+    const alreadyClaimed = gift.claimedUsers.some(
+      id => id.toString() === userId.toString()
+    );
+
+    if (alreadyClaimed) {
       return res.status(400).json({
         message: "You already collected this gift"
       });
     }
 
+    // Gift Over check
     if (gift.remainingAmount < gift.amountPerUser) {
       gift.active = false;
       await gift.save();
@@ -136,36 +155,67 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
-    gift.remainingAmount -= gift.amountPerUser;
-    gift.claimedUsers.push(userId);
+    /* ================================
+       ATOMIC UPDATE FOR SAFETY
+    ================================= */
+    const updatedGift = await GiftCode.findOneAndUpdate(
+      {
+        _id: gift._id,
+        remainingAmount: { $gte: gift.amountPerUser }
+      },
+      {
+        $inc: { remainingAmount: -gift.amountPerUser },
+        $push: { claimedUsers: new mongoose.Types.ObjectId(userId) }
+      },
+      { new: true }
+    );
 
-    if (gift.remainingAmount < gift.amountPerUser) {
-      gift.active = false;
+    if (!updatedGift) {
+      return res.status(400).json({
+        message: "Gift Code Over"
+      });
     }
 
-    await gift.save();
+    if (updatedGift.remainingAmount < updatedGift.amountPerUser) {
+      updatedGift.active = false;
+      await updatedGift.save();
+    }
 
-    const user = await User.findById(userId);
-    user.wallet += gift.amountPerUser;
-    await user.save();
+    /* ================================
+       UPDATE USER WALLET ATOMICALLY
+    ================================= */
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { wallet: gift.amountPerUser } },
+      { new: true }
+    );
 
+    /* ================================
+       CREATE TRANSACTION RECORD
+    ================================= */
     await Transaction.create({
       userId,
       orderId: "GIFT_" + Date.now(),
       amount: gift.amountPerUser,
       type: "earning",
       status: "success",
-      description: `Gift reward from ${gift.code}`
+      description: `Gift reward from ${formattedCode}`
     });
 
+    /* ================================
+       RETURN UPDATED WALLET
+    ================================= */
     res.json({
       message: `You received ₹${gift.amountPerUser}`,
-      amount: gift.amountPerUser
+      amount: gift.amountPerUser,
+      wallet: user.wallet
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server Error" });
+    console.error("Claim Gift Error:", error);
+    res.status(500).json({
+      message: "Server Error"
+    });
   }
 });
 
