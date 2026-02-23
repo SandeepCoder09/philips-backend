@@ -16,18 +16,30 @@ router.post("/create-order", authMiddleware, async (req, res) => {
     const { amount } = req.body;
     const userId = req.user.id;
 
+    // 🔹 Validate amount
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
+    // 🔹 Fetch user
     const user = await User.findById(userId);
 
-    if (!user || !user.phone) {
-      return res.status(400).json({
-        message: "User phone number not found"
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
       });
     }
 
+    // 🔹 Support both mobile or phone field
+    const phoneNumber = user.mobile || user.phone;
+
+    if (!phoneNumber) {
+      return res.status(400).json({
+        message: "User mobile number not found"
+      });
+    }
+
+    // 🔹 Generate unique order ID
     const orderId = "order_" + Date.now();
 
     const orderRequest = {
@@ -35,11 +47,12 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       order_currency: "INR",
       order_id: orderId,
       customer_details: {
-        customer_id: userId,
-        customer_phone: user.phone
+        customer_id: userId.toString(),
+        customer_phone: phoneNumber
       }
     };
 
+    // 🔹 Create Cashfree order
     const response = await axios.post(
       "https://api.cashfree.com/pg/orders",
       orderRequest,
@@ -53,6 +66,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       }
     );
 
+    // 🔹 Save transaction in DB
     await Transaction.create({
       userId,
       orderId,
@@ -67,8 +81,10 @@ router.post("/create-order", authMiddleware, async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Recharge error:", error.message);
-    return res.status(500).json({ message: "Order creation failed" });
+    console.error("Recharge error:", error.response?.data || error.message);
+    return res.status(500).json({
+      message: "Order creation failed"
+    });
   }
 });
 
