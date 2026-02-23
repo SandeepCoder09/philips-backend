@@ -26,6 +26,30 @@ const purchasedProductSchema = new mongoose.Schema(
     purchaseDate: {
       type: Date,
       default: Date.now
+    },
+
+    // 🔹 Total amount earned so far
+    totalEarned: {
+      type: Number,
+      default: 0
+    },
+
+    // 🔹 Last date earning was credited
+    lastEarningDate: {
+      type: Date,
+      default: null
+    },
+
+    // 🔹 Product active status (admin control)
+    isActive: {
+      type: Boolean,
+      default: true
+    },
+
+    // 🔹 Optional: Maximum return limit (example: 2x)
+    maxReturn: {
+      type: Number,
+      default: null
     }
   },
   { timestamps: true }
