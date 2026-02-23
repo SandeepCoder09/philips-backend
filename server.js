@@ -66,6 +66,9 @@ app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/products", require("./routes/products"));
 app.use("/api/webhook", require("./routes/webhookRoutes"));
 
+const giftRoutes = require("./routes/gift");
+app.use("/api/gift", giftRoutes);
+
 /* ============================
    404 HANDLER
 ============================ */
