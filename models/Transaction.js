@@ -19,13 +19,40 @@ const transactionSchema = new mongoose.Schema(
     },
 
     type: {
-      type: String, // recharge / withdraw
+      type: String,
+      enum: [
+        "recharge",
+        "withdraw",
+        "purchase",
+        "earning",
+        "referral_bonus"
+      ],
       required: true
     },
 
     status: {
-      type: String, // pending / success / rejected / processing
+      type: String,
+      enum: [
+        "pending",
+        "processing",
+        "under_review",
+        "success",
+        "rejected"
+      ],
       default: "pending"
+    },
+
+    actionBy: {
+      type: String
+    },
+
+    relatedProduct: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PurchasedProduct"
+    },
+
+    description: {
+      type: String
     }
   },
   { timestamps: true }
