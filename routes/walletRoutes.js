@@ -5,41 +5,33 @@ const axios = require("axios");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const BankAccount = require("../models/BankAccount");
+
 const authMiddleware = require("../middleware/authMiddleware");
+const adminMiddleware = require("../middleware/adminMiddleware");
 
 
-// =====================================================
-// CREATE CASHFREE ORDER (RECHARGE)
-// =====================================================
+/* =====================================================
+   CREATE CASHFREE ORDER (RECHARGE)
+===================================================== */
 router.post("/create-order", authMiddleware, async (req, res) => {
   try {
     const { amount } = req.body;
     const userId = req.user.id;
 
-    // 🔹 Validate amount
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
-    // 🔹 Fetch user
     const user = await User.findById(userId);
-
     if (!user) {
-      return res.status(404).json({
-        message: "User not found"
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    // 🔹 Support both mobile or phone field
     const phoneNumber = user.mobile || user.phone;
-
     if (!phoneNumber) {
-      return res.status(400).json({
-        message: "User mobile number not found"
-      });
+      return res.status(400).json({ message: "User mobile number not found" });
     }
 
-    // 🔹 Generate unique order ID
     const orderId = "order_" + Date.now();
 
     const orderRequest = {
@@ -52,7 +44,6 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       }
     };
 
-    // 🔹 Create Cashfree order
     const response = await axios.post(
       "https://api.cashfree.com/pg/orders",
       orderRequest,
@@ -66,7 +57,6 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       }
     );
 
-    // 🔹 Save transaction in DB
     await Transaction.create({
       userId,
       orderId,
@@ -82,22 +72,19 @@ router.post("/create-order", authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error("Recharge error:", error.response?.data || error.message);
-    return res.status(500).json({
-      message: "Order creation failed"
-    });
+    return res.status(500).json({ message: "Order creation failed" });
   }
 });
 
 
-// =====================================================
-// UPDATE TRANSACTION STATUS (RECHARGE CREDIT)
-// =====================================================
+/* =====================================================
+   UPDATE TRANSACTION STATUS (RECHARGE CREDIT)
+===================================================== */
 router.post("/update-status", authMiddleware, async (req, res) => {
   try {
     const { orderId, status } = req.body;
 
     const transaction = await Transaction.findOne({ orderId });
-
     if (!transaction) {
       return res.status(404).json({ message: "Transaction not found" });
     }
@@ -124,9 +111,9 @@ router.post("/update-status", authMiddleware, async (req, res) => {
 });
 
 
-// =====================================================
-// GET WALLET BALANCE
-// =====================================================
+/* =====================================================
+   GET WALLET BALANCE
+===================================================== */
 router.get("/balance", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("walletBalance");
@@ -145,13 +132,12 @@ router.get("/balance", authMiddleware, async (req, res) => {
 });
 
 
-// =====================================================
-// GET USER TRANSACTIONS (WITH FILTER SUPPORT)
-// =====================================================
+/* =====================================================
+   GET USER TRANSACTIONS
+===================================================== */
 router.get("/transactions", authMiddleware, async (req, res) => {
   try {
     const { type } = req.query;
-
     const filter = { userId: req.user.id };
 
     if (type && type !== "all") {
@@ -164,36 +150,26 @@ router.get("/transactions", authMiddleware, async (req, res) => {
     return res.json(transactions);
 
   } catch (error) {
-    return res.status(500).json({
-      message: "Error fetching transactions"
-    });
+    return res.status(500).json({ message: "Error fetching transactions" });
   }
 });
 
 
-// =====================================================
-// BIND BANK ACCOUNT
-// =====================================================
+/* =====================================================
+   BIND BANK ACCOUNT
+===================================================== */
 router.post("/bind-bank", authMiddleware, async (req, res) => {
   try {
     const { accountNumber, ifsc, holderName, bankName } = req.body;
     const userId = req.user.id;
 
     if (!accountNumber || !ifsc || !holderName || !bankName) {
-      return res.status(400).json({
-        message: "All fields are required"
-      });
+      return res.status(400).json({ message: "All fields are required" });
     }
 
-    const existing = await BankAccount.findOne({
-      userId,
-      accountNumber
-    });
-
+    const existing = await BankAccount.findOne({ userId, accountNumber });
     if (existing) {
-      return res.status(400).json({
-        message: "This bank account is already added"
-      });
+      return res.status(400).json({ message: "Bank already added" });
     }
 
     await BankAccount.create({
@@ -204,72 +180,55 @@ router.post("/bind-bank", authMiddleware, async (req, res) => {
       bankName
     });
 
-    return res.status(201).json({
-      message: "Bank linked successfully"
-    });
+    return res.status(201).json({ message: "Bank linked successfully" });
 
   } catch (error) {
-    return res.status(500).json({
-      message: "Failed to bind bank"
-    });
+    return res.status(500).json({ message: "Failed to bind bank" });
   }
 });
 
 
-// =====================================================
-// GET USER BANK LIST
-// =====================================================
+/* =====================================================
+   GET USER BANK LIST
+===================================================== */
 router.get("/banks", authMiddleware, async (req, res) => {
   try {
-    const banks = await BankAccount.find({
-      userId: req.user.id
-    }).sort({ createdAt: -1 });
+    const banks = await BankAccount.find({ userId: req.user.id })
+      .sort({ createdAt: -1 });
 
     return res.json(banks);
 
   } catch (error) {
-    return res.status(500).json({
-      message: "Error fetching banks"
-    });
+    return res.status(500).json({ message: "Error fetching banks" });
   }
 });
 
 
-// =====================================================
-// WITHDRAW REQUEST
-// =====================================================
+/* =====================================================
+   WITHDRAW REQUEST
+===================================================== */
 router.post("/withdraw", authMiddleware, async (req, res) => {
   try {
     const { amount } = req.body;
     const userId = req.user.id;
 
     if (!amount || amount <= 0) {
-      return res.status(400).json({
-        message: "Invalid amount"
-      });
+      return res.status(400).json({ message: "Invalid amount" });
     }
 
     const bank = await BankAccount.findOne({ userId });
-
     if (!bank) {
-      return res.status(400).json({
-        message: "No bank linked"
-      });
+      return res.status(400).json({ message: "No bank linked" });
     }
 
     const user = await User.findOneAndUpdate(
-      {
-        _id: userId,
-        walletBalance: { $gte: amount }
-      },
+      { _id: userId, walletBalance: { $gte: amount } },
       { $inc: { walletBalance: -amount } },
       { new: true }
     );
 
     if (!user) {
-      return res.status(400).json({
-        message: "Insufficient balance"
-      });
+      return res.status(400).json({ message: "Insufficient balance" });
     }
 
     const withdrawId = "withdraw_" + Date.now();
@@ -289,32 +248,30 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     });
 
   } catch (error) {
-    return res.status(500).json({
-      message: "Withdraw failed"
-    });
+    return res.status(500).json({ message: "Withdraw failed" });
   }
 });
 
 
-// =====================================================
-// ADMIN APPROVE / REJECT WITHDRAW
-// =====================================================
-router.post("/withdraw-action", async (req, res) => {
+/* =====================================================
+   ADMIN APPROVE / REJECT WITHDRAW
+===================================================== */
+router.post("/withdraw-action", adminMiddleware, async (req, res) => {
   try {
     const { orderId, action } = req.body;
+
+    if (!orderId || !action) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
 
     const transaction = await Transaction.findOne({ orderId });
 
     if (!transaction || transaction.type !== "withdraw") {
-      return res.status(404).json({
-        message: "Withdraw not found"
-      });
+      return res.status(404).json({ message: "Withdraw not found" });
     }
 
     if (transaction.status !== "processing") {
-      return res.status(400).json({
-        message: "Already processed"
-      });
+      return res.status(400).json({ message: "Already processed" });
     }
 
     if (action === "approve") {
@@ -324,26 +281,28 @@ router.post("/withdraw-action", async (req, res) => {
     }
 
     if (action === "reject") {
-      transaction.status = "rejected";
-      await transaction.save();
 
+      // Refund FIRST
       await User.findByIdAndUpdate(
         transaction.userId,
         { $inc: { walletBalance: transaction.amount } }
       );
 
-      return res.json({ message: "Withdraw rejected & refunded" });
+      transaction.status = "rejected";
+      await transaction.save();
+
+      return res.json({
+        message: "Withdraw rejected and refunded"
+      });
     }
 
     return res.status(400).json({ message: "Invalid action" });
 
   } catch (error) {
-    return res.status(500).json({
-      message: "Action failed"
-    });
+    console.error("Withdraw Action Error:", error);
+    return res.status(500).json({ message: "Action failed" });
   }
 });
 
-module.exports = router;
 
-// test deploy test
+module.exports = router;
