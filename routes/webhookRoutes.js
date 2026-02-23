@@ -4,26 +4,28 @@ const router = express.Router();
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 
-// =====================================================
-// CASHFREE WEBHOOK
-// =====================================================
 router.post("/cashfree", async (req, res) => {
   try {
     console.log("🔥 Webhook hit");
+    console.log("Body:", req.body);
 
     const body = req.body;
 
-    if (!body || !body.data) {
+    if (!body || !body.data || !body.data.order) {
       return res.status(400).json({ message: "Invalid webhook payload" });
     }
 
-    const { order_id, order_status, order_amount } = body.data;
+    const order = body.data.order;
+
+    const order_id = order.order_id;
+    const order_status = order.order_status;
+    const order_amount = order.order_amount;
 
     console.log("Order ID:", order_id);
     console.log("Status:", order_status);
 
     if (order_status !== "PAID") {
-      return res.status(200).json({ message: "Not a successful payment" });
+      return res.status(200).json({ message: "Not successful payment" });
     }
 
     const transaction = await Transaction.findOne({ orderId: order_id });
@@ -36,11 +38,9 @@ router.post("/cashfree", async (req, res) => {
       return res.status(200).json({ message: "Already processed" });
     }
 
-    // ✅ Mark success
     transaction.status = "success";
     await transaction.save();
 
-    // 💰 Credit wallet
     await User.findByIdAndUpdate(
       transaction.userId,
       { $inc: { walletBalance: order_amount } }
