@@ -5,9 +5,8 @@ const GiftCode = require("../models/GiftCode");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 
-const auth = require("../middleware/auth");
-const adminAuth = require("../middleware/adminAuth");
-
+const auth = require("../middleware/authMiddleware");
+const adminAuth = require("../middleware/adminMiddleware");
 
 // =====================================================
 // 🎁 USER - REDEEM GIFT CODE (Limited Users + Random ₹1–₹10)
