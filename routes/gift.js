@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-
 const mongoose = require("mongoose");
+
 const GiftCode = require("../models/GiftCode");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
@@ -15,22 +15,17 @@ const authMiddleware = require("../middleware/authMiddleware");
 ===================================================== */
 router.post("/create", adminMiddleware, async (req, res) => {
   try {
-
     let { code, amountPerUser, totalAmount } = req.body;
 
     if (!code || !amountPerUser || !totalAmount) {
-      return res.status(400).json({
-        message: "All fields are required"
-      });
+      return res.status(400).json({ message: "All fields are required" });
     }
 
     amountPerUser = Number(amountPerUser);
     totalAmount = Number(totalAmount);
 
     if (amountPerUser <= 0 || totalAmount <= 0) {
-      return res.status(400).json({
-        message: "Amounts must be greater than 0"
-      });
+      return res.status(400).json({ message: "Amounts must be greater than 0" });
     }
 
     if (amountPerUser > totalAmount) {
@@ -42,14 +37,11 @@ router.post("/create", adminMiddleware, async (req, res) => {
     const formattedCode = code.toUpperCase().trim();
 
     const existing = await GiftCode.findOne({ code: formattedCode });
-
     if (existing) {
-      return res.status(400).json({
-        message: "Gift code already exists"
-      });
+      return res.status(400).json({ message: "Gift code already exists" });
     }
 
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour validity
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     const gift = await GiftCode.create({
       code: formattedCode,
@@ -79,14 +71,12 @@ router.post("/create", adminMiddleware, async (req, res) => {
 router.get("/all", adminMiddleware, async (req, res) => {
   try {
 
-    // Auto deactivate expired gifts
     await GiftCode.updateMany(
       { expiresAt: { $lt: new Date() }, active: true },
       { $set: { active: false } }
     );
 
     const gifts = await GiftCode.find().sort({ createdAt: -1 });
-
     res.json(gifts);
 
   } catch (error) {
@@ -106,9 +96,7 @@ router.post("/claim", authMiddleware, async (req, res) => {
     const userId = req.user.id;
 
     if (!code) {
-      return res.status(400).json({
-        message: "Gift code required"
-      });
+      return res.status(400).json({ message: "Gift code required" });
     }
 
     const formattedCode = code.toUpperCase().trim();
@@ -119,22 +107,15 @@ router.post("/claim", authMiddleware, async (req, res) => {
     });
 
     if (!gift) {
-      return res.status(404).json({
-        message: "Invalid Gift Code"
-      });
+      return res.status(404).json({ message: "Invalid Gift Code" });
     }
 
-    // Expired check
     if (gift.expiresAt < new Date()) {
       gift.active = false;
       await gift.save();
-
-      return res.status(400).json({
-        message: "Gift Code Expired"
-      });
+      return res.status(400).json({ message: "Gift Code Expired" });
     }
 
-    // Already claimed check (SAFE ObjectId compare)
     const alreadyClaimed = gift.claimedUsers.some(
       id => id.toString() === userId.toString()
     );
@@ -145,19 +126,13 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
-    // Gift Over check
     if (gift.remainingAmount < gift.amountPerUser) {
       gift.active = false;
       await gift.save();
-
-      return res.status(400).json({
-        message: "Gift Code Over"
-      });
+      return res.status(400).json({ message: "Gift Code Over" });
     }
 
-    /* ================================
-       ATOMIC UPDATE FOR SAFETY
-    ================================= */
+    // Atomic gift deduction
     const updatedGift = await GiftCode.findOneAndUpdate(
       {
         _id: gift._id,
@@ -171,9 +146,7 @@ router.post("/claim", authMiddleware, async (req, res) => {
     );
 
     if (!updatedGift) {
-      return res.status(400).json({
-        message: "Gift Code Over"
-      });
+      return res.status(400).json({ message: "Gift Code Over" });
     }
 
     if (updatedGift.remainingAmount < updatedGift.amountPerUser) {
@@ -181,18 +154,17 @@ router.post("/claim", authMiddleware, async (req, res) => {
       await updatedGift.save();
     }
 
-    /* ================================
-       UPDATE USER WALLET ATOMICALLY
-    ================================= */
-    const user = await User.findByIdAndUpdate(
+    // ✅ CORRECT WALLET FIELD FIXED HERE
+    const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { $inc: { wallet: gift.amountPerUser } },
+      { $inc: { walletBalance: gift.amountPerUser } },
       { new: true }
     );
 
-    /* ================================
-       CREATE TRANSACTION RECORD
-    ================================= */
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     await Transaction.create({
       userId,
       orderId: "GIFT_" + Date.now(),
@@ -202,20 +174,15 @@ router.post("/claim", authMiddleware, async (req, res) => {
       description: `Gift reward from ${formattedCode}`
     });
 
-    /* ================================
-       RETURN UPDATED WALLET
-    ================================= */
     res.json({
       message: `You received ₹${gift.amountPerUser}`,
       amount: gift.amountPerUser,
-      wallet: user.wallet
+      wallet: updatedUser.walletBalance
     });
 
   } catch (error) {
     console.error("Claim Gift Error:", error);
-    res.status(500).json({
-      message: "Server Error"
-    });
+    res.status(500).json({ message: "Server Error" });
   }
 });
 
