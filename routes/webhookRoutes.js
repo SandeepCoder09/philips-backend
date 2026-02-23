@@ -24,7 +24,11 @@ router.post("/cashfree", async (req, res) => {
       return res.status(400).json({ message: "Invalid signature" });
     }
 
-    const { order_id, order_status, order_amount } = req.body.data;
+    if (!req.body || !req.body.data) {
+        return res.status(400).json({ message: "Invalid webhook payload" });
+      }
+      
+      const { order_id, order_status, order_amount } = req.body.data;
 
     if (order_status !== "PAID") {
       return res.status(200).json({ message: "Payment not successful" });
