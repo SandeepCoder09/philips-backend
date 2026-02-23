@@ -18,7 +18,7 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    // ✅ Convert to numbers (security improvement)
+    // ✅ Convert to numbers
     price = Number(price);
     dailyEarning = Number(dailyEarning);
 
@@ -38,21 +38,38 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    // ✅ Check if already active product exists
-    const existing = await PurchasedProduct.findOne({
-      user: user._id,
-      name,
-      isActive: true
-    });
+    /* ================= PURCHASE LIMIT LOGIC ================= */
 
-    if (existing) {
+    const purchaseLimits = {
+      99: 1,
+      499: 3,
+      999: 5,
+      4999: 10
+    };
+
+    const limit = purchaseLimits[price];
+
+    if (!limit) {
       return res.status(400).json({
         success: false,
-        message: "Product already purchased and active"
+        message: "Invalid product"
       });
     }
 
-    // 💰 CHECK BALANCE
+    const purchaseCount = await PurchasedProduct.countDocuments({
+      user: user._id,
+      price: price
+    });
+
+    if (purchaseCount >= limit) {
+      return res.status(400).json({
+        success: false,
+        message: `Purchase limit reached. Max allowed: ${limit}`
+      });
+    }
+
+    /* ================= WALLET CHECK ================= */
+
     if (user.walletBalance < price) {
       return res.status(400).json({
         success: false,
@@ -60,11 +77,13 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    // 💸 DEDUCT MONEY
+    /* ================= DEDUCT WALLET ================= */
+
     user.walletBalance -= price;
     await user.save();
 
-    // 📦 SAVE PURCHASED PRODUCT
+    /* ================= SAVE PURCHASE ================= */
+
     const purchase = new PurchasedProduct({
       user: user._id,
       name,
@@ -74,7 +93,8 @@ router.post("/buy", authMiddleware, async (req, res) => {
 
     await purchase.save();
 
-    // 🧾 CREATE TRANSACTION ENTRY
+    /* ================= TRANSACTION ENTRY ================= */
+
     await Transaction.create({
       userId: user._id,
       orderId: "PUR-" + Date.now(),
@@ -99,7 +119,6 @@ router.post("/buy", authMiddleware, async (req, res) => {
     });
   }
 });
-
 
 /* ================= GET MY PRODUCTS ================= */
 router.get("/my", authMiddleware, async (req, res) => {
