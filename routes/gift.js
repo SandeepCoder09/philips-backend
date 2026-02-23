@@ -45,14 +45,14 @@ router.post("/create", adminMiddleware, async (req, res) => {
       });
     }
 
-    // Valid for 1 hour only
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     const gift = await GiftCode.create({
       code: formattedCode,
       amountPerUser,
       totalAmount,
       remainingAmount: totalAmount,
+      claimedUsers: [],
       expiresAt,
       active: true
     });
@@ -61,6 +61,23 @@ router.post("/create", adminMiddleware, async (req, res) => {
       message: "Gift created successfully",
       gift
     });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+
+/* =====================================================
+   GET ALL GIFTS (ADMIN)
+===================================================== */
+router.get("/all", adminMiddleware, async (req, res) => {
+  try {
+
+    const gifts = await GiftCode.find().sort({ createdAt: -1 });
+
+    res.json(gifts);
 
   } catch (error) {
     console.error(error);
@@ -95,7 +112,6 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
-    // Expired check
     if (gift.expiresAt < new Date()) {
       gift.active = false;
       await gift.save();
@@ -105,14 +121,12 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
-    // Already claimed check
     if (gift.claimedUsers.includes(userId)) {
       return res.status(400).json({
         message: "You already collected this gift"
       });
     }
 
-    // Gift Over check
     if (gift.remainingAmount < gift.amountPerUser) {
       gift.active = false;
       await gift.save();
@@ -122,7 +136,6 @@ router.post("/claim", authMiddleware, async (req, res) => {
       });
     }
 
-    // Deduct from pool
     gift.remainingAmount -= gift.amountPerUser;
     gift.claimedUsers.push(userId);
 
@@ -132,12 +145,10 @@ router.post("/claim", authMiddleware, async (req, res) => {
 
     await gift.save();
 
-    // Credit wallet
     const user = await User.findById(userId);
     user.wallet += gift.amountPerUser;
     await user.save();
 
-    // Create transaction
     await Transaction.create({
       userId,
       orderId: "GIFT_" + Date.now(),
