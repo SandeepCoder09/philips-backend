@@ -18,35 +18,38 @@ const app = express();
 connectDB();
 
 /* =====================================================
-   CREATE HTTP SERVER (FOR SOCKET.IO)
+   CREATE HTTP SERVER
 ===================================================== */
 const server = http.createServer(app);
 
 /* =====================================================
+   ALLOWED ORIGINS (VERY IMPORTANT)
+===================================================== */
+const allowedOrigins = [
+  "https://philipsfuturelighting24.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:5500"
+];
+
+/* =====================================================
    SOCKET.IO SETUP
 ===================================================== */
-const allowedOrigin =
-  process.env.NODE_ENV === "production"
-    ? process.env.FRONTEND_URL
-    : "*";
-
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigin,
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
-    credentials: true,
-  },
+    credentials: true
+  }
 });
 
-// Make io globally accessible in routes
+// Make io available in routes
 app.set("io", io);
 
-// Optional: Log connections
 io.on("connection", (socket) => {
-  console.log("🟢 Admin Connected:", socket.id);
+  console.log("🟢 Socket Connected:", socket.id);
 
   socket.on("disconnect", () => {
-    console.log("🔴 Admin Disconnected:", socket.id);
+    console.log("🔴 Socket Disconnected:", socket.id);
   });
 });
 
@@ -64,14 +67,24 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 /* =====================================================
-   CORS CONFIGURATION
+   CORS CONFIGURATION (FIXED PROPERLY)
 ===================================================== */
 app.use(
   cors({
-    origin: allowedOrigin,
+    origin: function (origin, callback) {
+
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
 
