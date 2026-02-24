@@ -23,44 +23,23 @@ connectDB();
 const server = http.createServer(app);
 
 /* =====================================================
-   ALLOWED ORIGINS
-===================================================== */
-const allowedOrigins = [
-  "https://philipsfuturelighting24.vercel.app",
-  "https://sandeepcoder09.github.io",
-  "http://localhost:3000",
-  "http://localhost:5500"
-];
-
-/* =====================================================
-   EXPRESS CORS (STABLE VERSION)
+   GLOBAL CORS (SIMPLE + STABLE)
 ===================================================== */
 app.use(
   cors({
-    origin: function (origin, callback) {
-
-      // Allow requests without origin (Postman, mobile apps)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.some(o => origin.startsWith(o))) {
-        return callback(null, true);
-      }
-
-      return callback(null, false);
-    },
+    origin: true, // 🔥 Allow all origins (JWT handles security)
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
 
 /* =====================================================
-   SOCKET.IO SETUP (STABLE + SAFE)
+   SOCKET.IO SETUP (STABLE)
 ===================================================== */
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
+    origin: true, // 🔥 Same as express
     credentials: true
   },
   transports: ["websocket", "polling"]
@@ -76,13 +55,13 @@ io.on("connection", (socket) => {
 
   console.log("🟢 Socket Connected:", socket.id);
 
-  // USER ROOM JOIN
+  // USER ROOM
   socket.on("join_user_room", (userId) => {
     if (!userId) return;
     socket.join(userId.toString());
   });
 
-  // ADMIN ROOM JOIN
+  // ADMIN ROOM
   socket.on("join_admin_room", () => {
     socket.join("admin_room");
   });
