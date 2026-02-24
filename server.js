@@ -69,18 +69,32 @@ if (process.env.NODE_ENV !== "production") {
 /* =====================================================
    CORS CONFIGURATION (FIXED PROPERLY)
 ===================================================== */
+/* =====================================================
+   CORS CONFIGURATION (FINAL STABLE VERSION)
+===================================================== */
+
 app.use(
   cors({
     origin: function (origin, callback) {
 
-      // Allow requests with no origin (mobile apps, Postman, etc.)
+      // Allow Postman / server-to-server / mobile
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      // Allow any Vercel deployment
+      if (origin.includes("vercel.app")) {
+        return callback(null, true);
       }
+
+      // Allow localhost
+      if (
+        origin.includes("localhost") ||
+        origin.includes("127.0.0.1")
+      ) {
+        return callback(null, true);
+      }
+
+      // Otherwise block silently (NOT throw error)
+      return callback(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
