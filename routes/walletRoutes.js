@@ -270,8 +270,13 @@ router.post("/withdraw-action", adminMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Withdraw not found" });
     }
 
-    if (transaction.status !== "processing") {
-      return res.status(400).json({ message: "Already processed" });
+    if (
+      transaction.status === "success" ||
+      transaction.status === "rejected"
+    ) {
+      return res.status(400).json({
+        message: "Already processed"
+      });
     }
 
     if (action === "under review") {
