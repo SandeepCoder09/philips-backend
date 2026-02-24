@@ -191,6 +191,29 @@ router.get("/balance", authMiddleware, async (req, res) => {
   }
 });
 
+/* =====================================================
+   GET USER TRANSACTIONS
+===================================================== */
+router.get("/transactions", authMiddleware, async (req, res) => {
+  try {
+    const { type } = req.query;
+
+    const filter = { userId: req.user.id };
+
+    if (type && type !== "all") {
+      filter.type = type;
+    }
+
+    const transactions = await Transaction.find(filter)
+      .sort({ createdAt: -1 });
+
+    return res.json(transactions);
+
+  } catch (error) {
+    console.error("Transaction fetch error:", error);
+    return res.status(500).json({ message: "Error fetching transactions" });
+  }
+});
 
 /* =====================================================
    WITHDRAW REQUEST
