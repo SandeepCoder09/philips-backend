@@ -11,6 +11,61 @@ const adminMiddleware = require("../middleware/adminMiddleware");
 
 
 /* =====================================================
+   BIND BANK ACCOUNT
+===================================================== */
+router.post("/bind-bank", authMiddleware, async (req, res) => {
+  try {
+    const { accountNumber, ifsc, holderName, bankName } = req.body;
+
+    if (!accountNumber || !ifsc || !holderName || !bankName) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    const existing = await BankAccount.findOne({
+      userId: req.user.id,
+      accountNumber
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: "Bank already linked" });
+    }
+
+    await BankAccount.create({
+      userId: req.user.id,
+      accountNumber,
+      ifsc,
+      holderName,
+      bankName
+    });
+
+    return res.status(201).json({ message: "Bank linked successfully" });
+
+  } catch (error) {
+    console.error("Bind bank error:", error);
+    return res.status(500).json({ message: "Failed to bind bank" });
+  }
+});
+
+
+/* =====================================================
+   GET USER BANKS
+===================================================== */
+router.get("/banks", authMiddleware, async (req, res) => {
+  try {
+    const banks = await BankAccount.find({
+      userId: req.user.id
+    }).sort({ createdAt: -1 });
+
+    return res.json(banks);
+
+  } catch (error) {
+    console.error("Fetch banks error:", error);
+    return res.status(500).json({ message: "Error fetching banks" });
+  }
+});
+
+
+/* =====================================================
    CREATE CASHFREE ORDER (RECHARGE)
 ===================================================== */
 router.post("/create-order", authMiddleware, async (req, res) => {
@@ -28,11 +83,6 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const phoneNumber = user.mobile;
-    if (!phoneNumber) {
-      return res.status(400).json({ message: "Mobile not found" });
-    }
-
     const orderId = "order_" + Date.now();
 
     const orderRequest = {
@@ -41,7 +91,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       order_id: orderId,
       customer_details: {
         customer_id: userId.toString(),
-        customer_phone: phoneNumber
+        customer_phone: user.mobile
       }
     };
 
@@ -66,7 +116,8 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       status: "pending"
     });
 
-    io.emit("transaction_created");
+    io.to(userId.toString()).emit("wallet_updated");
+    io.to("admin_room").emit("transaction_updated");
 
     return res.json({
       payment_session_id: response.data.payment_session_id,
@@ -81,7 +132,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
 
 
 /* =====================================================
-   UPDATE TRANSACTION STATUS (RECHARGE CREDIT)
+   UPDATE TRANSACTION STATUS
 ===================================================== */
 router.post("/update-status", authMiddleware, async (req, res) => {
   try {
@@ -108,7 +159,8 @@ router.post("/update-status", authMiddleware, async (req, res) => {
       );
     }
 
-    io.emit("transaction_updated");
+    io.to(transaction.userId.toString()).emit("wallet_updated");
+    io.to("admin_room").emit("transaction_updated");
 
     return res.json({ message: "Transaction updated successfully" });
 
@@ -136,29 +188,6 @@ router.get("/balance", authMiddleware, async (req, res) => {
 
   } catch (error) {
     return res.status(500).json({ message: "Error fetching balance" });
-  }
-});
-
-
-/* =====================================================
-   GET USER TRANSACTIONS
-===================================================== */
-router.get("/transactions", authMiddleware, async (req, res) => {
-  try {
-    const { type } = req.query;
-
-    const filter = { userId: req.user.id };
-    if (type && type !== "all") {
-      filter.type = type;
-    }
-
-    const transactions = await Transaction.find(filter)
-      .sort({ createdAt: -1 });
-
-    return res.json(transactions);
-
-  } catch (error) {
-    return res.status(500).json({ message: "Error fetching transactions" });
   }
 });
 
@@ -201,7 +230,8 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
       status: "processing"
     });
 
-    io.emit("withdraw_updated");
+    io.to(userId.toString()).emit("wallet_updated");
+    io.to("admin_room").emit("withdraw_updated");
 
     return res.json({
       message: "Withdrawal request submitted",
@@ -236,39 +266,24 @@ router.post("/withdraw-action", adminMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Already processed" });
     }
 
-    if (action === "under review") {
-      transaction.status = "under review";
-      await transaction.save();
-      io.emit("withdraw_updated");
-      return res.json({ message: "Marked as under review" });
-    }
-
     if (action === "approve") {
       transaction.status = "success";
       await transaction.save();
-      io.emit("withdraw_updated");
-      return res.json({ message: "Withdraw approved" });
     }
 
     if (action === "reject") {
-
-      // Refund wallet FIRST
       await User.findByIdAndUpdate(
         transaction.userId,
         { $inc: { walletBalance: transaction.amount } }
       );
-
       transaction.status = "rejected";
       await transaction.save();
-
-      io.emit("withdraw_updated");
-
-      return res.json({
-        message: "Withdraw rejected and refunded"
-      });
     }
 
-    return res.status(400).json({ message: "Invalid action" });
+    io.to(transaction.userId.toString()).emit("wallet_updated");
+    io.to("admin_room").emit("withdraw_updated");
+
+    return res.json({ message: "Withdraw updated successfully" });
 
   } catch (error) {
     console.error("Withdraw Action Error:", error);
