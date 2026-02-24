@@ -34,6 +34,7 @@ const allowedOrigins = [
 /* =====================================================
    SOCKET.IO SETUP
 ===================================================== */
+
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -45,8 +46,30 @@ const io = new Server(server, {
 // Make io available in routes
 app.set("io", io);
 
+/* =====================================================
+   SOCKET CONNECTION HANDLER
+===================================================== */
 io.on("connection", (socket) => {
+
   console.log("🟢 Socket Connected:", socket.id);
+
+  /* ===============================
+     USER ROOM JOIN (FOR LIVE WALLET)
+  =============================== */
+  socket.on("join_user_room", (userId) => {
+    if (!userId) return;
+
+    socket.join(userId.toString());
+    console.log(`👤 User joined room: ${userId}`);
+  });
+
+  /* ===============================
+     ADMIN ROOM (OPTIONAL)
+  =============================== */
+  socket.on("join_admin_room", () => {
+    socket.join("admin_room");
+    console.log("👑 Admin joined admin room");
+  });
 
   socket.on("disconnect", () => {
     console.log("🔴 Socket Disconnected:", socket.id);
