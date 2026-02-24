@@ -3,6 +3,8 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const http = require("http");
+const { Server } = require("socket.io");
 
 const connectDB = require("./config/db");
 
@@ -14,6 +16,39 @@ const app = express();
    CONNECT DATABASE
 ===================================================== */
 connectDB();
+
+/* =====================================================
+   CREATE HTTP SERVER (FOR SOCKET.IO)
+===================================================== */
+const server = http.createServer(app);
+
+/* =====================================================
+   SOCKET.IO SETUP
+===================================================== */
+const allowedOrigin =
+  process.env.NODE_ENV === "production"
+    ? process.env.FRONTEND_URL
+    : "*";
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigin,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+// Make io globally accessible in routes
+app.set("io", io);
+
+// Optional: Log connections
+io.on("connection", (socket) => {
+  console.log("🟢 Admin Connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("🔴 Admin Disconnected:", socket.id);
+  });
+});
 
 /* =====================================================
    BASIC SECURITY
@@ -33,7 +68,7 @@ if (process.env.NODE_ENV !== "production") {
 ===================================================== */
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "*",
+    origin: allowedOrigin,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -43,8 +78,6 @@ app.use(
 /* =====================================================
    BODY PARSERS
 ===================================================== */
-
-// For normal routes
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -63,7 +96,6 @@ app.get("/", (req, res) => {
 /* =====================================================
    API ROUTES
 ===================================================== */
-
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/referral", require("./routes/referralRoutes"));
@@ -88,7 +120,7 @@ app.use((req, res) => {
    GLOBAL ERROR HANDLER
 ===================================================== */
 app.use((err, req, res, next) => {
-  console.error("❌ GLOBAL ERROR:", err);
+  console.error("❌ GLOBAL ERROR:", err.stack || err);
 
   res.status(err.status || 500).json({
     success: false,
@@ -101,13 +133,12 @@ app.use((err, req, res, next) => {
 ===================================================== */
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log("=======================================");
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log("=======================================");
 
-  // Start earning engine safely
   try {
     require("./cron/earningEngine");
     console.log("💰 Earning Engine Activated");
