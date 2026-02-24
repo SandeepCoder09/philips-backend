@@ -23,27 +23,50 @@ connectDB();
 const server = http.createServer(app);
 
 /* =====================================================
-   ALLOWED ORIGINS (VERY IMPORTANT)
+   ALLOWED ORIGINS
 ===================================================== */
 const allowedOrigins = [
   "https://philipsfuturelighting24.vercel.app",
+  "https://sandeepcoder09.github.io",
   "http://localhost:3000",
   "http://localhost:5500"
 ];
 
 /* =====================================================
-   SOCKET.IO SETUP
+   EXPRESS CORS (STABLE VERSION)
 ===================================================== */
+app.use(
+  cors({
+    origin: function (origin, callback) {
 
+      // Allow requests without origin (Postman, mobile apps)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.some(o => origin.startsWith(o))) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
+
+/* =====================================================
+   SOCKET.IO SETUP (STABLE + SAFE)
+===================================================== */
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  transports: ["websocket", "polling"]
 });
 
-// Make io available in routes
+// Make io accessible in routes
 app.set("io", io);
 
 /* =====================================================
@@ -53,22 +76,15 @@ io.on("connection", (socket) => {
 
   console.log("🟢 Socket Connected:", socket.id);
 
-  /* ===============================
-     USER ROOM JOIN (FOR LIVE WALLET)
-  =============================== */
+  // USER ROOM JOIN
   socket.on("join_user_room", (userId) => {
     if (!userId) return;
-
     socket.join(userId.toString());
-    console.log(`👤 User joined room: ${userId}`);
   });
 
-  /* ===============================
-     ADMIN ROOM (OPTIONAL)
-  =============================== */
+  // ADMIN ROOM JOIN
   socket.on("join_admin_room", () => {
     socket.join("admin_room");
-    console.log("👑 Admin joined admin room");
   });
 
   socket.on("disconnect", () => {
@@ -88,42 +104,6 @@ app.use(helmet());
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
-
-/* =====================================================
-   CORS CONFIGURATION (FIXED PROPERLY)
-===================================================== */
-/* =====================================================
-   CORS CONFIGURATION (FINAL STABLE VERSION)
-===================================================== */
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-
-      // Allow Postman / server-to-server / mobile
-      if (!origin) return callback(null, true);
-
-      // Allow any Vercel deployment
-      if (origin.includes("vercel.app")) {
-        return callback(null, true);
-      }
-
-      // Allow localhost
-      if (
-        origin.includes("localhost") ||
-        origin.includes("127.0.0.1")
-      ) {
-        return callback(null, true);
-      }
-
-      // Otherwise block silently (NOT throw error)
-      return callback(null, false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
 
 /* =====================================================
    BODY PARSERS
