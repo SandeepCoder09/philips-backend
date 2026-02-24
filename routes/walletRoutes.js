@@ -289,6 +289,12 @@ router.post("/withdraw-action", adminMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Already processed" });
     }
 
+    // ✅ ADD THIS BLOCK
+    if (action === "under review") {
+      transaction.status = "under review";
+      await transaction.save();
+    }
+
     if (action === "approve") {
       transaction.status = "success";
       await transaction.save();
@@ -299,6 +305,7 @@ router.post("/withdraw-action", adminMiddleware, async (req, res) => {
         transaction.userId,
         { $inc: { walletBalance: transaction.amount } }
       );
+
       transaction.status = "rejected";
       await transaction.save();
     }
