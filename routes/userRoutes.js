@@ -1,24 +1,129 @@
 const express = require("express");
 const router = express.Router();
+const bcrypt = require("bcryptjs");
+
 const authMiddleware = require("../middleware/authMiddleware");
 const User = require("../models/User");
 
-// Test route
+/* =====================================================
+   TEST ROUTE
+===================================================== */
 router.get("/", (req, res) => {
   res.json({ message: "User route working" });
 });
 
-// 🔐 Protected Profile Route
+/* =====================================================
+   🔐 GET PROFILE (Protected)
+===================================================== */
 router.get("/profile", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const user = await User.findById(req.user.id).select("-password -withdrawPin");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
 
     res.json({
+      success: true,
       message: "Profile fetched successfully",
       user
     });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Profile Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* =====================================================
+   CHECK IF WITHDRAW PIN EXISTS
+===================================================== */
+router.get("/check-withdraw-pin", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("withdrawPin");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.json({
+      hasPin: !!user.withdrawPin
+    });
+
+  } catch (error) {
+    console.error("Check PIN error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* =====================================================
+   🔐 SET / UPDATE WITHDRAW PIN
+===================================================== */
+router.post("/set-withdraw-pin", authMiddleware, async (req, res) => {
+  try {
+    const { pin } = req.body;
+
+    // Validate PIN
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      return res.status(400).json({
+        success: false,
+        message: "PIN must be exactly 4 digits"
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Hash PIN
+    const hashedPin = await bcrypt.hash(pin, 10);
+
+    user.withdrawPin = hashedPin;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Withdraw PIN set successfully"
+    });
+
+  } catch (error) {
+    console.error("Set PIN Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* =====================================================
+   🔎 CHECK IF PIN IS SET
+===================================================== */
+router.get("/has-withdraw-pin", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("withdrawPin");
+
+    res.json({
+      success: true,
+      hasPin: !!user.withdrawPin
+    });
+
+  } catch (error) {
+    console.error("Check PIN Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 });
 

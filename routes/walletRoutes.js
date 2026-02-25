@@ -216,30 +216,56 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   WITHDRAW REQUEST
+   WITHDRAW REQUEST (WITH PIN VERIFICATION)
 ===================================================== */
 router.post("/withdraw", authMiddleware, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, pin } = req.body;
     const userId = req.user.id;
     const io = req.app.get("io");
 
+    // 1️⃣ Validate amount
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
+    // 2️⃣ Validate PIN provided
+    if (!pin) {
+      return res.status(400).json({ message: "Withdraw PIN is required" });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // 3️⃣ Check if PIN is set
+    if (!user.withdrawPin) {
+      return res.status(400).json({ message: "Withdraw PIN not set" });
+    }
+
+    // 4️⃣ Compare PIN
+    const isMatch = await bcrypt.compare(pin, user.withdrawPin);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid Withdraw PIN" });
+    }
+
+    // 5️⃣ Check bank linked
     const bank = await BankAccount.findOne({ userId });
     if (!bank) {
       return res.status(400).json({ message: "No bank linked" });
     }
 
-    const user = await User.findOneAndUpdate(
+    // 6️⃣ Deduct balance safely
+    const updatedUser = await User.findOneAndUpdate(
       { _id: userId, walletBalance: { $gte: amount } },
       { $inc: { walletBalance: -amount } },
       { new: true }
     );
 
-    if (!user) {
+    if (!updatedUser) {
       return res.status(400).json({ message: "Insufficient balance" });
     }
 
@@ -259,10 +285,11 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     return res.json({
       message: "Withdrawal request submitted",
       status: "processing",
-      newBalance: user.walletBalance
+      newBalance: updatedUser.walletBalance
     });
 
   } catch (error) {
+    console.error("Withdraw error:", error);
     return res.status(500).json({ message: "Withdraw failed" });
   }
 });

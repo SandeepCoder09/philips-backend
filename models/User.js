@@ -41,6 +41,12 @@ const userSchema = new mongoose.Schema(
       default: null
     },
 
+    // Withdraw Pin
+    withdrawPin: {
+      type: String,
+      default: null
+    },
+
     isAdmin: {
       type: Boolean,
       default: false
