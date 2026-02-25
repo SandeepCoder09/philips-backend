@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const axios = require("axios");
+const bcrypt = require("bcrypt");
 
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
