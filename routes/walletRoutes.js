@@ -17,13 +17,14 @@ const adminMiddleware = require("../middleware/adminMiddleware");
 router.post("/bind-bank", authMiddleware, async (req, res) => {
   try {
     const { accountNumber, ifsc, holderName, bankName } = req.body;
+    const userId = req.user.userId;
 
     if (!accountNumber || !ifsc || !holderName || !bankName) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
     const existing = await BankAccount.findOne({
-      userId: req.user.id,
+      userId,
       accountNumber
     });
 
@@ -32,7 +33,7 @@ router.post("/bind-bank", authMiddleware, async (req, res) => {
     }
 
     await BankAccount.create({
-      userId: req.user.id,
+      userId,
       accountNumber,
       ifsc,
       holderName,
@@ -53,9 +54,10 @@ router.post("/bind-bank", authMiddleware, async (req, res) => {
 ===================================================== */
 router.get("/banks", authMiddleware, async (req, res) => {
   try {
-    const banks = await BankAccount.find({
-      userId: req.user.id
-    }).sort({ createdAt: -1 });
+    const userId = req.user.userId;
+
+    const banks = await BankAccount.find({ userId })
+      .sort({ createdAt: -1 });
 
     return res.json(banks);
 
@@ -72,14 +74,15 @@ router.get("/banks", authMiddleware, async (req, res) => {
 router.post("/create-order", authMiddleware, async (req, res) => {
   try {
     const { amount } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.userId;
     const io = req.app.get("io");
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findOne({ userId });
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -154,8 +157,8 @@ router.post("/update-status", authMiddleware, async (req, res) => {
     await transaction.save();
 
     if (status === "success" && transaction.type === "recharge") {
-      await User.findByIdAndUpdate(
-        transaction.userId,
+      await User.findOneAndUpdate(
+        { userId: transaction.userId },
         { $inc: { walletBalance: transaction.amount } }
       );
     }
@@ -176,7 +179,7 @@ router.post("/update-status", authMiddleware, async (req, res) => {
 ===================================================== */
 router.get("/balance", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
+    const user = await User.findOne({ userId: req.user.userId })
       .select("walletBalance");
 
     if (!user) {
@@ -192,14 +195,16 @@ router.get("/balance", authMiddleware, async (req, res) => {
   }
 });
 
+
 /* =====================================================
    GET USER TRANSACTIONS
 ===================================================== */
 router.get("/transactions", authMiddleware, async (req, res) => {
   try {
     const { type } = req.query;
+    const userId = req.user.userId;
 
-    const filter = { userId: req.user.id };
+    const filter = { userId };
 
     if (type && type !== "all") {
       filter.type = type;
@@ -216,52 +221,48 @@ router.get("/transactions", authMiddleware, async (req, res) => {
   }
 });
 
+
 /* =====================================================
-   WITHDRAW REQUEST (WITH PIN VERIFICATION)
+   WITHDRAW REQUEST
 ===================================================== */
 router.post("/withdraw", authMiddleware, async (req, res) => {
   try {
     const { amount, pin } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.userId;
     const io = req.app.get("io");
 
-    // 1️⃣ Validate amount
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
-    // 2️⃣ Validate PIN provided
     if (!pin) {
       return res.status(400).json({ message: "Withdraw PIN is required" });
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findOne({ userId });
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // 3️⃣ Check if PIN is set
     if (!user.withdrawPin) {
       return res.status(400).json({ message: "Withdraw PIN not set" });
     }
 
-    // 4️⃣ Compare PIN
     const isMatch = await bcrypt.compare(pin, user.withdrawPin);
 
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid Withdraw PIN" });
     }
 
-    // 5️⃣ Check bank linked
     const bank = await BankAccount.findOne({ userId });
+
     if (!bank) {
       return res.status(400).json({ message: "No bank linked" });
     }
 
-    // 6️⃣ Deduct balance safely
     const updatedUser = await User.findOneAndUpdate(
-      { _id: userId, walletBalance: { $gte: amount } },
+      { userId, walletBalance: { $gte: amount } },
       { $inc: { walletBalance: -amount } },
       { new: true }
     );
@@ -317,7 +318,6 @@ router.post("/withdraw-action", adminMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Already processed" });
     }
 
-    // ✅ ADD THIS BLOCK
     if (action === "under review") {
       transaction.status = "under review";
       await transaction.save();
@@ -329,8 +329,8 @@ router.post("/withdraw-action", adminMiddleware, async (req, res) => {
     }
 
     if (action === "reject") {
-      await User.findByIdAndUpdate(
-        transaction.userId,
+      await User.findOneAndUpdate(
+        { userId: transaction.userId },
         { $inc: { walletBalance: transaction.amount } }
       );
 

@@ -9,8 +9,9 @@ const Transaction = require("../models/Transaction");
 router.post("/buy", authMiddleware, async (req, res) => {
   try {
     let { name, price, dailyEarning } = req.body;
+    const userId = req.user.userId;
 
-    // ✅ Basic validation
+
     if (!name || !price || !dailyEarning) {
       return res.status(400).json({
         success: false,
@@ -18,74 +19,30 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    // ✅ Convert to numbers
+
     price = Number(price);
     dailyEarning = Number(dailyEarning);
 
-    if (isNaN(price) || isNaN(dailyEarning)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid price or earning value"
-      });
-    }
-
-    const user = await User.findById(req.user.id);
-
+    const user = await User.findOne({ userId });
     if (!user) {
       return res.status(404).json({
         success: false,
         message: "User not found"
       });
-    }
-
-    /* ================= PURCHASE LIMIT LOGIC ================= */
-
-    const purchaseLimits = {
-      99: 1,
-      499: 3,
-      999: 5,
-      4999: 10
-    };
-
-    const limit = purchaseLimits[price];
-
-    if (!limit) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid product"
-      });
-    }
-
-    const purchaseCount = await PurchasedProduct.countDocuments({
-      user: user._id,
-      price: price
-    });
-
-    if (purchaseCount >= limit) {
-      return res.status(400).json({
-        success: false,
-        message: `Purchase limit reached. Max allowed: ${limit}`
-      });
-    }
-
-    /* ================= WALLET CHECK ================= */
-
-    if (user.walletBalance < price) {
+    } if (user.walletBalance < price) {
       return res.status(400).json({
         success: false,
         message: "Insufficient Balance"
       });
     }
 
-    /* ================= DEDUCT WALLET ================= */
-
+    // Deduct wallet
     user.walletBalance -= price;
     await user.save();
 
-    /* ================= SAVE PURCHASE ================= */
-
+    // Save purchase
     const purchase = new PurchasedProduct({
-      user: user._id,
+      userId: user.userId,
       name,
       price,
       dailyEarning
@@ -93,10 +50,10 @@ router.post("/buy", authMiddleware, async (req, res) => {
 
     await purchase.save();
 
-    /* ================= TRANSACTION ENTRY ================= */
+
 
     await Transaction.create({
-      userId: user._id,
+      userId: user.userId,
       orderId: "PUR-" + Date.now(),
       amount: price,
       type: "purchase",
@@ -104,6 +61,64 @@ router.post("/buy", authMiddleware, async (req, res) => {
       relatedProduct: purchase._id,
       description: `Purchased ${name}`
     });
+
+    /* ================= QUALIFICATION CHECK ================= */
+
+    if (price >= 399 && !user.isQualified) {
+
+      user.isQualified = true;
+      await user.save();
+
+      // Registration bonus already handled during register
+
+      // 🔥 Process Referral Fixed Bonuses
+      if (user.referredById) {
+
+        const sponsor = await User.findOne({
+          userId: user.referredById
+        });
+
+        if (sponsor && sponsor.isQualified) {
+
+          sponsor.qualifiedDirectCount += 1;
+
+          // ₹50 First Direct Bonus (only once)
+          if (!sponsor.firstDirectBonusGiven) {
+            sponsor.walletBalance += 50;
+            sponsor.firstDirectBonusGiven = true;
+
+            await Transaction.create({
+              userId: sponsor.userId,
+              orderId: "REF50-" + Date.now(),
+              amount: 50,
+              type: "referral_bonus",
+              status: "success",
+              description: `First Direct Qualification Bonus`
+            });
+          }
+
+          // ₹300 Milestone Bonus
+          if (
+            sponsor.qualifiedDirectCount >= 3 &&
+            !sponsor.teamBonusGiven
+          ) {
+            sponsor.walletBalance += 300;
+            sponsor.teamBonusGiven = true;
+
+            await Transaction.create({
+              userId: sponsor.userId,
+              orderId: "REF300-" + Date.now(),
+              amount: 300,
+              type: "referral_bonus",
+              status: "success",
+              description: `3 Direct Team Bonus`
+            });
+          }
+
+          await sponsor.save();
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -124,7 +139,7 @@ router.post("/buy", authMiddleware, async (req, res) => {
 router.get("/my", authMiddleware, async (req, res) => {
   try {
     const products = await PurchasedProduct.find({
-      user: req.user.id
+      userId: req.user.userId
     }).sort({ createdAt: -1 });
 
     res.json({

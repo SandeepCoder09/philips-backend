@@ -2,10 +2,10 @@ const mongoose = require("mongoose");
 
 const purchasedProductSchema = new mongoose.Schema(
   {
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true
+    userId: {
+      type: Number,
+      required: true,
+      index: true
     },
 
     name: {

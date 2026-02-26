@@ -4,7 +4,6 @@ const processEarnings = require("../utils/processEarnings");
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  // 🔒 Check token existence
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({
       success: false,
@@ -15,25 +14,24 @@ const authMiddleware = async (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
-    // ✅ Verify JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    if (!decoded || !decoded.id) {
+    if (!decoded || !decoded.userId) {
       return res.status(401).json({
         success: false,
         message: "Invalid token payload"
       });
     }
 
-    req.user = decoded;
+    // Attach userId to request
+    req.user = {
+      userId: decoded.userId,
+      isAdmin: decoded.isAdmin || false
+    };
 
-    /*
-      💰 SAFE EARNING ENGINE
-      Runs earning processor when authenticated request happens.
-      If it fails, it will not block API.
-    */
+    // 💰 Safe earning processor
     try {
-      await processEarnings(decoded.id);
+      await processEarnings(decoded.userId);
     } catch (earningError) {
       console.error("Earning Engine Error:", earningError);
     }

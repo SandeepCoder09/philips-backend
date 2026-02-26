@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
+    /* ================= BASIC INFO ================= */
+
     name: {
       type: String,
       required: true,
@@ -20,14 +22,16 @@ const userSchema = new mongoose.Schema(
       required: true
     },
 
-    // 💰 WALLET SYSTEM
+    /* ================= WALLET SYSTEM ================= */
+
     walletBalance: {
       type: Number,
       default: 0,
       min: 0
     },
 
-    // 🔢 NUMERIC USER ID SYSTEM
+    /* ================= NUMERIC USER ID ================= */
+
     userId: {
       type: Number,
       unique: true,
@@ -35,17 +39,55 @@ const userSchema = new mongoose.Schema(
       index: true
     },
 
-    // 🎁 REFERRAL SYSTEM
+    /* ================= REFERRAL SYSTEM ================= */
+
     referredById: {
       type: Number,
-      default: null
+      default: null,
+      index: true
     },
 
-    // Withdraw Pin
+    /* ================= QUALIFICATION SYSTEM ================= */
+
+    // User becomes qualified after purchasing product >= 399
+    isQualified: {
+      type: Boolean,
+      default: false
+    },
+
+    // Count of direct referrals who became qualified
+    qualifiedDirectCount: {
+      type: Number,
+      default: 0
+    },
+
+    // ₹50 first direct bonus (only once lifetime)
+    firstDirectBonusGiven: {
+      type: Boolean,
+      default: false
+    },
+
+    // ₹300 milestone bonus after 3 qualified directs
+    teamBonusGiven: {
+      type: Boolean,
+      default: false
+    },
+
+    /* ================= COMMISSION TRACKING ================= */
+
+    totalCommissionEarned: {
+      type: Number,
+      default: 0
+    },
+
+    /* ================= WITHDRAW PIN ================= */
+
     withdrawPin: {
       type: String,
       default: null
     },
+
+    /* ================= ROLE ================= */
 
     isAdmin: {
       type: Boolean,
@@ -53,7 +95,16 @@ const userSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+
+    // Hide internal Mongo fields from API response
+    toJSON: {
+      transform: function (doc, ret) {
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      }
+    }
   }
 );
 

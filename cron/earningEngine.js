@@ -13,6 +13,13 @@ function isToday(date) {
   );
 }
 
+// Commission percentages
+const COMMISSION = {
+  1: 0.05,
+  2: 0.03,
+  3: 0.02
+};
+
 // Runs every day at 12:05 AM
 cron.schedule("5 0 * * *", async () => {
   console.log("🔄 Running Daily Earning Engine...");
@@ -22,55 +29,100 @@ cron.schedule("5 0 * * *", async () => {
 
     for (let product of products) {
 
-      // Skip if already credited today
+      
       if (isToday(product.lastEarningDate)) continue;
 
-      // Stop if maxReturn reached
-      if (
-        product.maxReturn &&
-        product.totalEarned >= product.maxReturn
-      ) {
+      if (product.maxReturn && product.totalEarned >= product.maxReturn) {
         product.isActive = false;
         await product.save();
         continue;
       }
 
-      const user = await User.findById(product.user);
+      const user = await User.findOne({ userId: product.userId });
       if (!user) continue;
 
-      // Credit earning
+      // CREDIT DAILY EARNING TO BUYER
       user.walletBalance += product.dailyEarning;
       await user.save();
 
-      // Update product
+
       product.totalEarned += product.dailyEarning;
       product.lastEarningDate = new Date();
 
-      // Deactivate if max reached
-      if (
-        product.maxReturn &&
-        product.totalEarned >= product.maxReturn
-      ) {
+      if (product.maxReturn && product.totalEarned >= product.maxReturn) {
         product.isActive = false;
       }
 
       await product.save();
 
-      // Create transaction
+
       await Transaction.create({
-        userId: user._id,
-        orderId: "EARN-" + Date.now() + "-" + product._id,
+        userId: user.userId,
+        orderId: "EARN-" + Date.now(),
         amount: product.dailyEarning,
         type: "earning",
         status: "success",
-        relatedProduct: product._id,
+
         description: `Daily earning from ${product.name}`
       });
 
-      console.log(`✅ Credited ₹${product.dailyEarning} to user ${user._id}`);
+      // 🔥 MULTI-LEVEL COMMISSION STARTS HERE
+      let currentUser = user;
+      for (let level = 1; level <= 3; level++) {
+
+        if (!currentUser.referredById) break;
+
+        const sponsor = await User.findOne({
+          userId: currentUser.referredById
+        });
+
+        if (!sponsor) break;
+
+        // Sponsor must be qualified
+        if (!sponsor.isQualified) {
+          currentUser = sponsor;
+          continue;
+        }
+
+        // Sponsor must have active product
+        const activeProduct = await PurchasedProduct.findOne({
+          userId: sponsor.userId,
+          isActive: true
+        });
+
+        if (!activeProduct) {
+          currentUser = sponsor;
+          continue;
+        }
+
+        const commissionAmount =
+          product.dailyEarning * COMMISSION[level];
+
+        if (commissionAmount > 0) {
+          sponsor.walletBalance += commissionAmount;
+          sponsor.totalCommissionEarned += commissionAmount;
+          await sponsor.save();
+
+          await Transaction.create({
+            userId: sponsor.userId,
+            orderId: "COMM-" + Date.now() + "-" + level,
+            amount: commissionAmount,
+            type: "commission",
+            status: "success",
+            description: `Level ${level} commission from user ${user.userId}`
+          });
+        }
+
+        currentUser = sponsor;
+      }
+
+      console.log(
+        `✅ Credited earning + commissions for product ${product._id}`
+      );
     }
 
     console.log("✅ Daily Earnings Completed");
+
   } catch (error) {
     console.error("❌ Earning Engine Error:", error);
   }

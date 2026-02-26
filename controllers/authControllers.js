@@ -10,14 +10,14 @@ const registerUser = async (req, res) => {
   try {
     const { name, mobile, password, inviteCode } = req.body;
 
-    // Validate required fields
+
     if (!name || !mobile || !password) {
       return res.status(400).json({
         message: "Name, mobile and password are required"
       });
     }
 
-    // Check if mobile already exists
+
     const existingUser = await User.findOne({ mobile });
 
     if (existingUser) {
@@ -26,7 +26,7 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Hash password
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
@@ -38,18 +38,18 @@ const registerUser = async (req, res) => {
     if (!counter) {
       counter = await Counter.create({
         name: "userId",
-        value: 9999 // so first user becomes 10000
+        value: 9999
       });
     }
 
-    // Atomic increment
+
     counter.value += 1;
     await counter.save();
 
     const newUserId = counter.value;
 
     // ===============================
-    // VALIDATE REFERRAL (IF PROVIDED)
+    // VALIDATE REFERRAL
     // ===============================
     let referredById = null;
 
@@ -68,7 +68,7 @@ const registerUser = async (req, res) => {
     }
 
     // ===============================
-    // CREATE NEW USER
+    // CREATE USER
     // ===============================
     const newUser = new User({
       name,
@@ -121,8 +121,9 @@ const loginUser = async (req, res) => {
       });
     }
 
+    // ✅ USE userId INSTEAD OF _id
     const token = jwt.sign(
-      { id: user._id },
+      { userId: user.userId },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -131,10 +132,9 @@ const loginUser = async (req, res) => {
       message: "Login successful",
       token,
       user: {
-        id: user._id,
+        userId: user.userId,
         name: user.name,
         mobile: user.mobile,
-        userId: user.userId,
         walletBalance: user.walletBalance
       }
     });
