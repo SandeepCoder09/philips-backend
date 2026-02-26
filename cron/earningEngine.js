@@ -3,24 +3,46 @@ const User = require("../models/User");
 const PurchasedProduct = require("../models/PurchasedProduct");
 const Transaction = require("../models/Transaction");
 
-function isToday(date) {
-  if (!date) return false;
-  const today = new Date();
-  return (
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear()
-  );
-}
-
-// Commission percentages
+// ==============================
+// CONFIG
+// ==============================
 const COMMISSION = {
   1: 0.05,
   2: 0.03,
   3: 0.02
 };
 
-// Runs every day at 12:05 AM
+// ==============================
+// HELPERS
+// ==============================
+function isToday(date) {
+  if (!date) return false;
+  const today = new Date();
+  const d = new Date(date);
+
+  return (
+    d.getDate() === today.getDate() &&
+    d.getMonth() === today.getMonth() &&
+    d.getFullYear() === today.getFullYear()
+  );
+}
+
+function generateTransactionId(prefix) {
+  const now = new Date();
+  const timestamp =
+    now.getFullYear().toString() +
+    (now.getMonth() + 1).toString().padStart(2, "0") +
+    now.getDate().toString().padStart(2, "0") +
+    now.getHours().toString().padStart(2, "0") +
+    now.getMinutes().toString().padStart(2, "0") +
+    now.getSeconds().toString().padStart(2, "0");
+
+  return `${prefix}${timestamp}`;
+}
+
+// ==============================
+// DAILY CRON (12:05 AM)
+// ==============================
 cron.schedule("5 0 * * *", async () => {
   console.log("🔄 Running Daily Earning Engine...");
 
@@ -28,103 +50,123 @@ cron.schedule("5 0 * * *", async () => {
     const products = await PurchasedProduct.find({ isActive: true });
 
     for (let product of products) {
+      try {
+        // Skip if already credited today
+        if (isToday(product.lastEarningDate)) continue;
 
-      
-      if (isToday(product.lastEarningDate)) continue;
+        // Stop if max reached
+        if (
+          product.maxReturn &&
+          product.totalEarned >= product.maxReturn
+        ) {
+          product.isActive = false;
+          await product.save();
+          continue;
+        }
 
-      if (product.maxReturn && product.totalEarned >= product.maxReturn) {
-        product.isActive = false;
+        // 🔎 IMPORTANT: must use numeric userId
+        const user = await User.findOne({ userId: product.userId });
+        if (!user) continue;
+
+        const dailyAmount = product.dailyEarning || 0;
+        if (dailyAmount <= 0) continue;
+
+        // ==============================
+        // CREDIT BUYER
+        // ==============================
+        user.walletBalance += dailyAmount;
+        await user.save();
+
+        product.totalEarned += dailyAmount;
+        product.lastEarningDate = new Date();
+
+        if (
+          product.maxReturn &&
+          product.totalEarned >= product.maxReturn
+        ) {
+          product.isActive = false;
+        }
+
         await product.save();
-        continue;
-      }
 
-      const user = await User.findOne({ userId: product.userId });
-      if (!user) continue;
-
-      // CREDIT DAILY EARNING TO BUYER
-      user.walletBalance += product.dailyEarning;
-      await user.save();
-
-
-      product.totalEarned += product.dailyEarning;
-      product.lastEarningDate = new Date();
-
-      if (product.maxReturn && product.totalEarned >= product.maxReturn) {
-        product.isActive = false;
-      }
-
-      await product.save();
-
-
-      await Transaction.create({
-        userId: user.userId,
-        orderId: "EARN-" + Date.now(),
-        amount: product.dailyEarning,
-        type: "earning",
-        status: "success",
-
-        description: `Daily earning from ${product.name}`
-      });
-
-      // 🔥 MULTI-LEVEL COMMISSION STARTS HERE
-      let currentUser = user;
-      for (let level = 1; level <= 3; level++) {
-
-        if (!currentUser.referredById) break;
-
-        const sponsor = await User.findOne({
-          userId: currentUser.referredById
+        await Transaction.create({
+          userId: user.userId,
+          orderId: generateTransactionId("PHERNID"),
+          amount: dailyAmount,
+          type: "earning",
+          status: "success",
+          description: `Daily earning from ${product.name}`
         });
 
-        if (!sponsor) break;
+        // ==============================
+        // MULTI LEVEL COMMISSION
+        // ==============================
+        let currentUser = user;
 
-        // Sponsor must be qualified
-        if (!sponsor.isQualified) {
-          currentUser = sponsor;
-          continue;
-        }
+        for (let level = 1; level <= 3; level++) {
 
-        // Sponsor must have active product
-        const activeProduct = await PurchasedProduct.findOne({
-          userId: sponsor.userId,
-          isActive: true
-        });
+          if (!currentUser.referredById) break;
 
-        if (!activeProduct) {
-          currentUser = sponsor;
-          continue;
-        }
-
-        const commissionAmount =
-          product.dailyEarning * COMMISSION[level];
-
-        if (commissionAmount > 0) {
-          sponsor.walletBalance += commissionAmount;
-          sponsor.totalCommissionEarned += commissionAmount;
-          await sponsor.save();
-
-          await Transaction.create({
-            userId: sponsor.userId,
-            orderId: "COMM-" + Date.now() + "-" + level,
-            amount: commissionAmount,
-            type: "commission",
-            status: "success",
-            description: `Level ${level} commission from user ${user.userId}`
+          const sponsor = await User.findOne({
+            userId: currentUser.referredById
           });
+
+          if (!sponsor) break;
+
+          // Qualification check
+          if (!sponsor.isQualified) {
+            currentUser = sponsor;
+            continue;
+          }
+
+          // Must have active product
+          const activeProduct = await PurchasedProduct.findOne({
+            userId: sponsor.userId,
+            isActive: true
+          });
+
+          if (!activeProduct) {
+            currentUser = sponsor;
+            continue;
+          }
+
+          const commissionAmount =
+            dailyAmount * COMMISSION[level];
+
+          if (commissionAmount > 0) {
+            sponsor.walletBalance += commissionAmount;
+            sponsor.totalCommissionEarned =
+              (sponsor.totalCommissionEarned || 0) +
+              commissionAmount;
+
+            await sponsor.save();
+
+            await Transaction.create({
+              userId: sponsor.userId,
+              orderId: generateTransactionId("PHCMTRID"),
+              amount: commissionAmount,
+              type: "commission",
+              status: "success",
+              description: `Level ${level} commission from user ${user.userId}`
+            });
+          }
+
+          currentUser = sponsor;
         }
 
-        currentUser = sponsor;
-      }
+        console.log(
+          `✅ Processed product ${product._id}`
+        );
 
-      console.log(
-        `✅ Credited earning + commissions for product ${product._id}`
-      );
+      } catch (innerError) {
+        console.error("Product Processing Error:", innerError);
+      }
     }
 
     console.log("✅ Daily Earnings Completed");
 
   } catch (error) {
-    console.error("❌ Earning Engine Error:", error);
+    console.error("❌ Earning Engine Fatal Error:", error);
   }
-
+  
 });

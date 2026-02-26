@@ -30,11 +30,11 @@ const authMiddleware = async (req, res, next) => {
     };
 
     // 💰 Safe earning processor
-    try {
-      await processEarnings(decoded.userId);
-    } catch (earningError) {
-      console.error("Earning Engine Error:", earningError);
-    }
+    // try {
+    //   await processEarnings(decoded.userId);
+    // } catch (earningError) {
+    //   console.error("Earning Engine Error:", earningError);
+    // }
 
     next();
   } catch (err) {

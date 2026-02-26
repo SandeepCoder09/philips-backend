@@ -25,10 +25,10 @@ const giftCodeSchema = new mongoose.Schema(
       required: true
     },
 
+    // ✅ Use numeric userId instead of ObjectId
     claimedUsers: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
+        type: Number
       }
     ],
 

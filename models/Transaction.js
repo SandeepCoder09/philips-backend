@@ -2,22 +2,29 @@ const mongoose = require("mongoose");
 
 const transactionSchema = new mongoose.Schema(
   {
+    // 🔹 Numeric userId (same as User model)
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true
+      type: Number,
+      required: true,
+      index: true
     },
 
+    // 🔹 Professional Transaction ID (PHRCTRID-YYYYMMDDHHMMSS)
     orderId: {
       type: String,
-      required: true
+      required: true,
+      unique: true,
+      index: true
     },
 
+    // 🔹 Amount involved
     amount: {
       type: Number,
-      required: true
+      required: true,
+      min: 0
     },
 
+    // 🔹 Transaction type
     type: {
       type: String,
       enum: [
@@ -25,38 +32,57 @@ const transactionSchema = new mongoose.Schema(
         "withdraw",
         "purchase",
         "earning",
-        "referral_bonus"
+        "referral_bonus",
+        "registration_bonus",
+        "team_bonus",
+        "commission",
+        "gift"
       ],
-      required: true
+      required: true,
+      index: true
     },
 
+    // 🔹 Current status
     status: {
       type: String,
       enum: [
         "pending",
-        "under review",
         "processing",
+        "under review",
+
         "success",
         "rejected"
       ],
-      default: "pending"
+      default: "pending",
+      index: true
     },
 
+    // 🔹 Admin action (optional)
     actionBy: {
-      type: String
+      type: String,
+      default: null
     },
 
+    // 🔹 Optional related product
     relatedProduct: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "PurchasedProduct"
+      ref: "PurchasedProduct",
+      default: null
     },
 
+    // 🔹 Description shown in UI
     description: {
-      type: String
+      type: String,
+      default: ""
     }
   },
-  { timestamps: true }
+  {
+    timestamps: true
+  }
 );
+
+// 🔹 Compound index for faster user transaction history
+transactionSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports =
   mongoose.models.Transaction ||

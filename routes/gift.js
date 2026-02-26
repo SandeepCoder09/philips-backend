@@ -1,6 +1,5 @@
 const express = require("express");
 const router = express.Router();
-const mongoose = require("mongoose");
 
 const GiftCode = require("../models/GiftCode");
 const User = require("../models/User");
@@ -8,6 +7,7 @@ const Transaction = require("../models/Transaction");
 
 const adminMiddleware = require("../middleware/adminMiddleware");
 const authMiddleware = require("../middleware/authMiddleware");
+const generateTransactionId = require("../utils/generateTransactionId");
 
 
 /* =====================================================
@@ -15,7 +15,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 ===================================================== */
 router.post("/create", adminMiddleware, async (req, res) => {
   try {
-    let { code, amountPerUser, totalAmount } = req.body;
+    let { code, amountPerUser, totalAmount, expiryMinutes } = req.body;
 
     if (!code || !amountPerUser || !totalAmount) {
       return res.status(400).json({ message: "All fields are required" });
@@ -41,7 +41,11 @@ router.post("/create", adminMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Gift code already exists" });
     }
 
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const expiryTime = expiryMinutes
+      ? Number(expiryMinutes) * 60 * 1000
+      : 60 * 60 * 1000; // default 60 minutes
+
+    const expiresAt = new Date(Date.now() + expiryTime);
 
     const gift = await GiftCode.create({
       code: formattedCode,
@@ -53,14 +57,14 @@ router.post("/create", adminMiddleware, async (req, res) => {
       active: true
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Gift created successfully",
       gift
     });
 
   } catch (error) {
     console.error("Create Gift Error:", error);
-    res.status(500).json({ message: "Server Error" });
+    return res.status(500).json({ message: "Server Error" });
   }
 });
 
@@ -70,18 +74,19 @@ router.post("/create", adminMiddleware, async (req, res) => {
 ===================================================== */
 router.get("/all", adminMiddleware, async (req, res) => {
   try {
-
+    // Auto deactivate expired gifts
     await GiftCode.updateMany(
       { expiresAt: { $lt: new Date() }, active: true },
       { $set: { active: false } }
     );
 
     const gifts = await GiftCode.find().sort({ createdAt: -1 });
-    res.json(gifts);
+
+    return res.json(gifts);
 
   } catch (error) {
     console.error("Get Gifts Error:", error);
-    res.status(500).json({ message: "Server Error" });
+    return res.status(500).json({ message: "Server Error" });
   }
 });
 
@@ -91,9 +96,8 @@ router.get("/all", adminMiddleware, async (req, res) => {
 ===================================================== */
 router.post("/claim", authMiddleware, async (req, res) => {
   try {
-
     const { code } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.userId; // ✅ numeric
 
     if (!code) {
       return res.status(400).json({ message: "Gift code required" });
@@ -110,29 +114,28 @@ router.post("/claim", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Invalid Gift Code" });
     }
 
+    // Expiry check
     if (gift.expiresAt < new Date()) {
       gift.active = false;
       await gift.save();
       return res.status(400).json({ message: "Gift Code Expired" });
     }
 
-    const alreadyClaimed = gift.claimedUsers.some(
-      id => id.toString() === userId.toString()
-    );
-
-    if (alreadyClaimed) {
+    // Already claimed check
+    if (gift.claimedUsers.includes(userId)) {
       return res.status(400).json({
         message: "You already collected this gift"
       });
     }
 
+    // Balance check
     if (gift.remainingAmount < gift.amountPerUser) {
       gift.active = false;
       await gift.save();
       return res.status(400).json({ message: "Gift Code Over" });
     }
 
-    // Atomic gift deduction
+    // Atomic deduction
     const updatedGift = await GiftCode.findOneAndUpdate(
       {
         _id: gift._id,
@@ -140,7 +143,7 @@ router.post("/claim", authMiddleware, async (req, res) => {
       },
       {
         $inc: { remainingAmount: -gift.amountPerUser },
-        $push: { claimedUsers: new mongoose.Types.ObjectId(userId) }
+        $push: { claimedUsers: userId }
       },
       { new: true }
     );
@@ -149,14 +152,15 @@ router.post("/claim", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Gift Code Over" });
     }
 
+    // Auto deactivate if empty
     if (updatedGift.remainingAmount < updatedGift.amountPerUser) {
       updatedGift.active = false;
       await updatedGift.save();
     }
 
-    // ✅ CORRECT WALLET FIELD FIXED HERE
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
+    // Credit wallet
+    const updatedUser = await User.findOneAndUpdate(
+      { userId },
       { $inc: { walletBalance: gift.amountPerUser } },
       { new: true }
     );
@@ -165,16 +169,19 @@ router.post("/claim", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Create transaction
+    const transactionId = generateTransactionId("gift");
+
     await Transaction.create({
       userId,
-      orderId: "GIFT_" + Date.now(),
+      orderId: transactionId,
       amount: gift.amountPerUser,
-      type: "earning",
+      type: "gift",
       status: "success",
       description: `Gift reward from ${formattedCode}`
     });
 
-    res.json({
+    return res.json({
       message: `You received ₹${gift.amountPerUser}`,
       amount: gift.amountPerUser,
       wallet: updatedUser.walletBalance
@@ -182,7 +189,7 @@ router.post("/claim", authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error("Claim Gift Error:", error);
-    res.status(500).json({ message: "Server Error" });
+    return res.status(500).json({ message: "Server Error" });
   }
 });
 

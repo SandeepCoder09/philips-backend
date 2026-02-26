@@ -17,7 +17,8 @@ router.get("/", (req, res) => {
 ===================================================== */
 router.get("/profile", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password -withdrawPin");
+    const user = await User.findOne({ userId: req.user.userId })
+      .select("-password -withdrawPin");
 
     if (!user) {
       return res.status(404).json({
@@ -46,19 +47,27 @@ router.get("/profile", authMiddleware, async (req, res) => {
 ===================================================== */
 router.get("/check-withdraw-pin", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("withdrawPin");
+    const user = await User.findOne({ userId: req.user.userId })
+      .select("withdrawPin");
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
     }
 
-    return res.json({
+    res.json({
+      success: true,
       hasPin: !!user.withdrawPin
     });
 
   } catch (error) {
-    console.error("Check PIN error:", error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("Check PIN Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 });
 
@@ -69,7 +78,6 @@ router.post("/set-withdraw-pin", authMiddleware, async (req, res) => {
   try {
     const { pin } = req.body;
 
-    // Validate PIN
     if (!pin || !/^\d{4}$/.test(pin)) {
       return res.status(400).json({
         success: false,
@@ -77,7 +85,7 @@ router.post("/set-withdraw-pin", authMiddleware, async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findOne({ userId: req.user.userId });
 
     if (!user) {
       return res.status(404).json({
@@ -86,7 +94,6 @@ router.post("/set-withdraw-pin", authMiddleware, async (req, res) => {
       });
     }
 
-    // Hash PIN
     const hashedPin = await bcrypt.hash(pin, 10);
 
     user.withdrawPin = hashedPin;
@@ -111,7 +118,15 @@ router.post("/set-withdraw-pin", authMiddleware, async (req, res) => {
 ===================================================== */
 router.get("/has-withdraw-pin", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("withdrawPin");
+    const user = await User.findOne({ userId: req.user.userId })
+      .select("withdrawPin");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
 
     res.json({
       success: true,

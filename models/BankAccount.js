@@ -3,9 +3,9 @@ const mongoose = require("mongoose");
 const bankAccountSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true
+      type: Number,   // ✅ MUST BE NUMBER
+      required: true,
+      index: true
     },
 
     accountNumber: {
