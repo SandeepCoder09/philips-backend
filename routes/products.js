@@ -1,16 +1,17 @@
 const express = require("express");
 const router = express.Router();
+
 const authMiddleware = require("../middleware/authMiddleware");
 const User = require("../models/User");
 const PurchasedProduct = require("../models/PurchasedProduct");
 const Transaction = require("../models/Transaction");
+const generateTransactionId = require("../utils/generateTransactionId");
 
 /* ================= BUY PRODUCT ================= */
 router.post("/buy", authMiddleware, async (req, res) => {
   try {
     let { name, price, dailyEarning } = req.body;
     const userId = req.user.userId;
-
 
     if (!name || !price || !dailyEarning) {
       return res.status(400).json({
@@ -19,28 +20,30 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-
     price = Number(price);
     dailyEarning = Number(dailyEarning);
 
     const user = await User.findOne({ userId });
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: "User not found"
       });
-    } if (user.walletBalance < price) {
+    }
+
+    if (user.walletBalance < price) {
       return res.status(400).json({
         success: false,
         message: "Insufficient Balance"
       });
     }
 
-    // Deduct wallet
+    /* ================= WALLET DEDUCT ================= */
     user.walletBalance -= price;
     await user.save();
 
-    // Save purchase
+    /* ================= SAVE PURCHASE ================= */
     const purchase = new PurchasedProduct({
       userId: user.userId,
       name,
@@ -50,11 +53,10 @@ router.post("/buy", authMiddleware, async (req, res) => {
 
     await purchase.save();
 
-
-
+    /* ================= CREATE PURCHASE TRANSACTION ================= */
     await Transaction.create({
       userId: user.userId,
-      orderId: "PUR-" + Date.now(),
+      orderId: generateTransactionId("purchase"),
       amount: price,
       type: "purchase",
       status: "success",
@@ -63,17 +65,11 @@ router.post("/buy", authMiddleware, async (req, res) => {
     });
 
     /* ================= QUALIFICATION CHECK ================= */
-
     if (price >= 399 && !user.isQualified) {
-
       user.isQualified = true;
       await user.save();
 
-      // Registration bonus already handled during register
-
-      // 🔥 Process Referral Fixed Bonuses
       if (user.referredById) {
-
         const sponsor = await User.findOne({
           userId: user.referredById
         });
@@ -82,14 +78,14 @@ router.post("/buy", authMiddleware, async (req, res) => {
 
           sponsor.qualifiedDirectCount += 1;
 
-          // ₹50 First Direct Bonus (only once)
+          /* ===== ₹50 FIRST DIRECT BONUS ===== */
           if (!sponsor.firstDirectBonusGiven) {
             sponsor.walletBalance += 50;
             sponsor.firstDirectBonusGiven = true;
 
             await Transaction.create({
               userId: sponsor.userId,
-              orderId: "REF50-" + Date.now(),
+              orderId: generateTransactionId("referral_bonus"),
               amount: 50,
               type: "referral_bonus",
               status: "success",
@@ -97,7 +93,7 @@ router.post("/buy", authMiddleware, async (req, res) => {
             });
           }
 
-          // ₹300 Milestone Bonus
+          /* ===== ₹300 TEAM BONUS ===== */
           if (
             sponsor.qualifiedDirectCount >= 3 &&
             !sponsor.teamBonusGiven
@@ -107,9 +103,9 @@ router.post("/buy", authMiddleware, async (req, res) => {
 
             await Transaction.create({
               userId: sponsor.userId,
-              orderId: "REF300-" + Date.now(),
+              orderId: generateTransactionId("team_bonus"),
               amount: 300,
-              type: "referral_bonus",
+              type: "team_bonus",
               status: "success",
               description: `3 Direct Team Bonus`
             });
@@ -134,6 +130,7 @@ router.post("/buy", authMiddleware, async (req, res) => {
     });
   }
 });
+
 
 /* ================= GET MY PRODUCTS ================= */
 router.get("/my", authMiddleware, async (req, res) => {
