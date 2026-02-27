@@ -17,6 +17,7 @@ const COMMISSION = {
 // ==============================
 function isToday(date) {
   if (!date) return false;
+
   const today = new Date();
   const d = new Date(date);
 
@@ -28,16 +29,7 @@ function isToday(date) {
 }
 
 function generateTransactionId(prefix) {
-  const now = new Date();
-  const timestamp =
-    now.getFullYear().toString() +
-    (now.getMonth() + 1).toString().padStart(2, "0") +
-    now.getDate().toString().padStart(2, "0") +
-    now.getHours().toString().padStart(2, "0") +
-    now.getMinutes().toString().padStart(2, "0") +
-    now.getSeconds().toString().padStart(2, "0");
-
-  return `${prefix}${timestamp}`;
+  return prefix + Date.now();
 }
 
 // ==============================
@@ -47,14 +39,19 @@ cron.schedule("5 0 * * *", async () => {
   console.log("🔄 Running Daily Earning Engine...");
 
   try {
-    const products = await PurchasedProduct.find({ isActive: true });
 
-    for (let product of products) {
+    const products = await PurchasedProduct.find({
+      isActive: true
+    });
+
+    for (const product of products) {
+
       try {
+
         // Skip if already credited today
         if (isToday(product.lastEarningDate)) continue;
 
-        // Stop if max reached
+        // Stop if max return reached
         if (
           product.maxReturn &&
           product.totalEarned >= product.maxReturn
@@ -64,15 +61,17 @@ cron.schedule("5 0 * * *", async () => {
           continue;
         }
 
-        // 🔎 IMPORTANT: must use numeric userId
-        const user = await User.findOne({ userId: product.userId });
+        const user = await User.findOne({
+          userId: product.userId
+        });
+
         if (!user) continue;
 
         const dailyAmount = product.dailyEarning || 0;
         if (dailyAmount <= 0) continue;
 
         // ==============================
-        // CREDIT BUYER
+        // 1️⃣ CREDIT BUYER
         // ==============================
         user.walletBalance += dailyAmount;
         await user.save();
@@ -91,15 +90,15 @@ cron.schedule("5 0 * * *", async () => {
 
         await Transaction.create({
           userId: user.userId,
-          orderId: generateTransactionId("PHERNID"),
+          orderId: generateTransactionId("PHERN"),
           amount: dailyAmount,
           type: "earning",
           status: "success",
-          description: `Daily earning from ${product.name}`
+          description: `Daily income from ${product.name}`
         });
 
         // ==============================
-        // MULTI LEVEL COMMISSION
+        // 2️⃣ MULTI LEVEL COMMISSION
         // ==============================
         let currentUser = user;
 
@@ -113,19 +112,19 @@ cron.schedule("5 0 * * *", async () => {
 
           if (!sponsor) break;
 
-          // Qualification check
+          // Must be qualified
           if (!sponsor.isQualified) {
             currentUser = sponsor;
             continue;
           }
 
-          // Must have active product
-          const activeProduct = await PurchasedProduct.findOne({
+          // Must have at least one active product
+          const hasActiveProduct = await PurchasedProduct.exists({
             userId: sponsor.userId,
             isActive: true
           });
 
-          if (!activeProduct) {
+          if (!hasActiveProduct) {
             currentUser = sponsor;
             continue;
           }
@@ -134,7 +133,9 @@ cron.schedule("5 0 * * *", async () => {
             dailyAmount * COMMISSION[level];
 
           if (commissionAmount > 0) {
+
             sponsor.walletBalance += commissionAmount;
+
             sponsor.totalCommissionEarned =
               (sponsor.totalCommissionEarned || 0) +
               commissionAmount;
@@ -143,11 +144,12 @@ cron.schedule("5 0 * * *", async () => {
 
             await Transaction.create({
               userId: sponsor.userId,
-              orderId: generateTransactionId("PHCMTRID"),
+              orderId: generateTransactionId("PHCOM"),
               amount: commissionAmount,
               type: "commission",
               status: "success",
-              description: `Level ${level} commission from user ${user.userId}`
+              description:
+                `Level ${level} commission from user ${user.userId} daily income (${product.name})`
             });
           }
 
@@ -155,7 +157,7 @@ cron.schedule("5 0 * * *", async () => {
         }
 
         console.log(
-          `✅ Processed product ${product._id}`
+          `✅ Processed product for user ${user.userId}`
         );
 
       } catch (innerError) {
@@ -168,5 +170,5 @@ cron.schedule("5 0 * * *", async () => {
   } catch (error) {
     console.error("❌ Earning Engine Fatal Error:", error);
   }
-  
+
 });

@@ -11,28 +11,34 @@ const registerUser = async (req, res) => {
   try {
     const { name, mobile, password, inviteCode } = req.body;
 
-
+    /* ===============================
+       VALIDATION
+    ================================ */
     if (!name || !mobile || !password) {
       return res.status(400).json({
+        success: false,
         message: "Name, mobile and password are required"
       });
     }
 
-    // Check existing mobile
+    /* ===============================
+       CHECK EXISTING USER
+    ================================ */
     const existingUser = await User.findOne({ mobile });
-
     if (existingUser) {
       return res.status(400).json({
+        success: false,
         message: "Mobile number already registered"
       });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    /* ===============================
+       HASH PASSWORD
+    ================================ */
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     /* ===============================
-       SAFE USER ID COUNTER
+       GENERATE SAFE USER ID
     ================================ */
     let counter = await Counter.findOne({ name: "userId" });
 
@@ -43,7 +49,7 @@ const registerUser = async (req, res) => {
       });
     }
 
-
+    
     counter.value += 1;
     await counter.save();
 
@@ -61,6 +67,7 @@ const registerUser = async (req, res) => {
 
       if (!refUser) {
         return res.status(400).json({
+          success: false,
           message: "Invalid invite code"
         });
       }
@@ -69,26 +76,28 @@ const registerUser = async (req, res) => {
     }
 
     /* ===============================
-       CREATE USER
+       CREATE NEW USER
     ================================ */
-    const newUser = new User({
+    const newUser = await User.create({
       name,
       mobile,
       password: hashedPassword,
       userId: newUserId,
-      referredById
+      referredById,
+      walletBalance: 0 // ensure safe default
     });
 
-    await newUser.save();
-
     /* ===============================
-       ₹30 REGISTRATION BONUS
-       (Only if invite used)
+       REGISTRATION BONUS (₹30)
+       Only if invite used
     ================================ */
     if (referredById) {
 
-      newUser.walletBalance += 30;
-      await newUser.save();
+      // Atomic wallet increment
+      await User.updateOne(
+        { userId: newUser.userId },
+        { $inc: { walletBalance: 30 } }
+      );
 
       await Transaction.create({
         userId: newUser.userId,
@@ -100,15 +109,21 @@ const registerUser = async (req, res) => {
       });
     }
 
+    /* ===============================
+       SUCCESS RESPONSE
+    ================================ */
     res.status(201).json({
+      success: true,
       message: "User registered successfully",
       userId: newUser.userId
     });
 
   } catch (error) {
     console.error("Register Error:", error);
+
     res.status(500).json({
-      error: error.message
+      success: false,
+      message: "Internal Server Error"
     });
   }
 };
@@ -123,6 +138,7 @@ const loginUser = async (req, res) => {
 
     if (!mobile || !password) {
       return res.status(400).json({
+        success: false,
         message: "Mobile and password are required"
       });
     }
@@ -131,6 +147,7 @@ const loginUser = async (req, res) => {
 
     if (!user) {
       return res.status(400).json({
+        success: false,
         message: "Invalid credentials"
       });
     }
@@ -139,11 +156,12 @@ const loginUser = async (req, res) => {
 
     if (!isMatch) {
       return res.status(400).json({
+        success: false,
         message: "Invalid credentials"
       });
     }
 
-    // JWT uses numeric userId
+
     const token = jwt.sign(
       { userId: user.userId },
       process.env.JWT_SECRET,
@@ -151,6 +169,7 @@ const loginUser = async (req, res) => {
     );
 
     res.json({
+      success: true,
       message: "Login successful",
       token,
       user: {
@@ -163,8 +182,10 @@ const loginUser = async (req, res) => {
 
   } catch (error) {
     console.error("Login Error:", error);
+
     res.status(500).json({
-      error: error.message
+      success: false,
+      message: "Internal Server Error"
     });
   }
 };
