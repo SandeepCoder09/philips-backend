@@ -4,7 +4,7 @@ const Bank = require("../models/BankAccount");
 
 
 // =====================================================
-// DASHBOARD OVERVIEW (WITH TODAY STATS)
+// DASHBOARD OVERVIEW
 // =====================================================
 exports.getDashboardStats = async (req, res) => {
   try {
@@ -12,64 +12,31 @@ exports.getDashboardStats = async (req, res) => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    // ================= USERS =================
     const totalUsers = await User.countDocuments();
-
     const todayUsers = await User.countDocuments({
       createdAt: { $gte: todayStart }
     });
 
-    // ================= TOTAL RECHARGE =================
-    const rechargeData = await Transaction.aggregate([
+    const recharge = await Transaction.aggregate([
       { $match: { type: "recharge", status: "success" } },
       { $group: { _id: null, total: { $sum: "$amount" } } }
     ]);
 
-    const todayRechargeData = await Transaction.aggregate([
-      {
-        $match: {
-          type: "recharge",
-          status: "success",
-          createdAt: { $gte: todayStart }
-        }
-      },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
-    ]);
-
-    // ================= TOTAL WITHDRAW =================
-    const withdrawSuccessData = await Transaction.aggregate([
+    const withdrawSuccess = await Transaction.aggregate([
       { $match: { type: "withdraw", status: "success" } },
       { $group: { _id: null, total: { $sum: "$amount" } } }
     ]);
 
-    const todayWithdrawData = await Transaction.aggregate([
-      {
-        $match: {
-          type: "withdraw",
-          status: "success",
-          createdAt: { $gte: todayStart }
-        }
-      },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
-    ]);
-
-    // ================= TOTAL COMMISSION =================
-    const commissionData = await Transaction.aggregate([
+    const commission = await Transaction.aggregate([
       { $match: { type: "commission" } },
       { $group: { _id: null, total: { $sum: "$amount" } } }
     ]);
 
-    const todayCommissionData = await Transaction.aggregate([
-      {
-        $match: {
-          type: "commission",
-          createdAt: { $gte: todayStart }
-        }
-      },
+    const allWithdraw = await Transaction.aggregate([
+      { $match: { type: "withdraw" } },
       { $group: { _id: null, total: { $sum: "$amount" } } }
     ]);
 
-    // ================= WITHDRAW COUNTS =================
     const pendingWithdrawCount = await Transaction.countDocuments({
       type: "withdraw",
       status: "processing"
@@ -85,44 +52,95 @@ exports.getDashboardStats = async (req, res) => {
       status: "success"
     });
 
-    const allWithdrawTotal = await Transaction.aggregate([
-      { $match: { type: "withdraw" } },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
-    ]);
-
     res.json({
       totalUsers,
-      totalRecharge: rechargeData[0]?.total || 0,
-      totalWithdraw: withdrawSuccessData[0]?.total || 0,
-      totalCommission: commissionData[0]?.total || 0,
-      totalWithdrawRequested: allWithdrawTotal[0]?.total || 0,
-
+      totalRecharge: recharge[0]?.total || 0,
+      totalWithdraw: withdrawSuccess[0]?.total || 0,
+      totalCommission: commission[0]?.total || 0,
+      totalWithdrawRequested: allWithdraw[0]?.total || 0,
       todayUsers,
-      todayRecharge: todayRechargeData[0]?.total || 0,
-      todayWithdraw: todayWithdrawData[0]?.total || 0,
-      todayCommission: todayCommissionData[0]?.total || 0,
-
       pendingWithdrawCount,
       underReviewWithdrawCount,
       successWithdrawCount
     });
 
   } catch (error) {
-    console.error("Dashboard Stats Error:", error);
+    console.error("Dashboard Error:", error);
     res.status(500).json({ message: "Failed to load dashboard stats" });
   }
 };
 
 
+
 // =====================================================
-// GET ALL USERS
+// GET ALL USERS (WITH TOTAL RECHARGE & WITHDRAW)
 // =====================================================
 exports.getAllUsers = async (req, res) => {
   try {
 
-    const users = await User.find()
-      .select("-password")
-      .sort({ createdAt: -1 });
+    const users = await User.aggregate([
+      {
+        $lookup: {
+          from: "transactions",
+          localField: "userId",
+          foreignField: "userId",
+          as: "transactions"
+        }
+      },
+      {
+        $addFields: {
+          totalRecharge: {
+            $sum: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: "$transactions",
+                    as: "t",
+                    cond: {
+                      $and: [
+                        { $eq: ["$$t.type", "recharge"] },
+                        { $eq: ["$$t.status", "success"] }
+                      ]
+                    }
+                  }
+                },
+                as: "r",
+                in: "$$r.amount"
+              }
+            }
+          },
+          totalWithdraw: {
+            $sum: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: "$transactions",
+                    as: "t",
+                    cond: {
+                      $and: [
+                        { $eq: ["$$t.type", "withdraw"] },
+                        { $eq: ["$$t.status", "success"] }
+                      ]
+                    }
+                  }
+                },
+                as: "w",
+                in: "$$w.amount"
+              }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          password: 0,
+          transactions: 0
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      }
+    ]);
 
     res.json(users);
 
@@ -133,8 +151,51 @@ exports.getAllUsers = async (req, res) => {
 };
 
 
+
 // =====================================================
-// GET ALL TRANSACTIONS (FIXED USER JOIN)
+// BAN / UNBAN USER (FIXED FOR NUMERIC userId)
+// =====================================================
+exports.toggleUserBan = async (req, res) => {
+  try {
+
+    const userId = Number(req.params.userId);
+    const { banned } = req.body;
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ message: "Invalid userId" });
+    }
+
+    const user = await User.findOne({ userId });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.isAdmin) {
+      return res.status(400).json({
+        message: "Admin cannot be banned"
+      });
+    }
+
+    user.isBanned = banned;
+    await user.save();
+
+    res.json({
+      message: banned
+        ? "User banned successfully"
+        : "User unbanned successfully"
+    });
+
+  } catch (error) {
+    console.error("Toggle Ban Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+
+
+// =====================================================
+// GET ALL TRANSACTIONS (WITH USER JOIN)
 // =====================================================
 exports.getAllTransactions = async (req, res) => {
   try {
@@ -161,14 +222,15 @@ exports.getAllTransactions = async (req, res) => {
     res.json(finalData);
 
   } catch (error) {
-    console.error("Get Transactions Error:", error);
+    console.error("Transactions Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
 
 
+
 // =====================================================
-// GET ALL BANKS (FIXED USER JOIN)
+// GET ALL BANKS (WITH USER JOIN)
 // =====================================================
 exports.getAllBanks = async (req, res) => {
   try {
@@ -195,14 +257,15 @@ exports.getAllBanks = async (req, res) => {
     res.json(finalData);
 
   } catch (error) {
-    console.error("Get Banks Error:", error);
+    console.error("Banks Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
 
 
+
 // =====================================================
-// GET ALL WITHDRAW REQUESTS (FULLY FIXED)
+// GET ALL WITHDRAWS (FILTER + USER JOIN)
 // =====================================================
 exports.getAllWithdraws = async (req, res) => {
   try {
@@ -221,11 +284,7 @@ exports.getAllWithdraws = async (req, res) => {
 
     if (startDate || endDate) {
       filter.createdAt = {};
-
-      if (startDate) {
-        filter.createdAt.$gte = new Date(startDate);
-      }
-
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
@@ -255,44 +314,33 @@ exports.getAllWithdraws = async (req, res) => {
     res.json(finalData);
 
   } catch (error) {
-    console.error("Withdraw Fetch Error:", error);
+    console.error("Withdraw Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
 
 
+
 // =====================================================
-// UPDATE WITHDRAW STATUS (AUDIT + SAFE REFUND)
+// UPDATE WITHDRAW STATUS
 // =====================================================
 exports.updateWithdrawStatus = async (req, res) => {
   try {
 
     const { status } = req.body;
 
-    const allowedStatuses = [
-      "under review",
-      "success",
-      "rejected"
-    ];
-
-    if (!allowedStatuses.includes(status)) {
+    const allowed = ["under review", "success", "rejected"];
+    if (!allowed.includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
 
     const transaction = await Transaction.findById(req.params.id);
 
-    if (!transaction) {
+    if (!transaction || transaction.type !== "withdraw") {
       return res.status(404).json({ message: "Withdraw not found" });
     }
 
-    if (transaction.type !== "withdraw") {
-      return res.status(400).json({ message: "Invalid transaction type" });
-    }
-
-    if (
-      transaction.status === "success" ||
-      transaction.status === "rejected"
-    ) {
+    if (["success", "rejected"].includes(transaction.status)) {
       return res.status(400).json({
         message: "Withdraw already finalized"
       });

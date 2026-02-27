@@ -22,6 +22,18 @@ const userSchema = new mongoose.Schema(
       required: true
     },
 
+    isBanned: {
+      type: Boolean,
+      default: false
+    },
+
+    banReason: String,
+    lastLogin: Date,
+    riskScore: {
+      type: Number,
+      default: 0
+    },
+
     /* ================= WALLET SYSTEM ================= */
 
     walletBalance: {

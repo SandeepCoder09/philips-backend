@@ -5,26 +5,38 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const User = require("../models/User");
+
+// ✅ IMPORTANT: Correct controller file name (singular)
 const { registerUser, loginUser } = require("../controllers/authControllers");
 
 
-// ================= USER ROUTES =================
+/* =====================================================
+   USER ROUTES
+===================================================== */
+
+// Register
 router.post("/register", registerUser);
+
+// Login
 router.post("/login", loginUser);
 
 
-// ================= ADMIN LOGIN =================
+/* =====================================================
+   ADMIN LOGIN
+===================================================== */
+
 router.post("/admin-login", async (req, res) => {
   try {
-    const { email, password } = req.body;
 
-    if (!email || !password) {
+    const { mobile, password } = req.body;
+
+    if (!mobile || !password) {
       return res.status(400).json({
-        message: "Email and password required"
+        message: "Mobile and password required"
       });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ mobile });
 
     if (!user || !user.isAdmin) {
       return res.status(403).json({
@@ -40,10 +52,9 @@ router.post("/admin-login", async (req, res) => {
       });
     }
 
-    // ✅ IMPORTANT: Use Mongo _id (NOT userId)
     const token = jwt.sign(
       {
-        id: user._id,
+        id: user._id,        // Use Mongo ObjectId
         isAdmin: true
       },
       process.env.JWT_SECRET,
@@ -64,7 +75,10 @@ router.post("/admin-login", async (req, res) => {
 });
 
 
-// ================= TEMP: CREATE ADMIN (DELETE AFTER USE) =================
+/* =====================================================
+   TEMP: CREATE ADMIN (DELETE AFTER USE)
+===================================================== */
+
 router.post("/create-admin", async (req, res) => {
   try {
 
@@ -79,7 +93,7 @@ router.post("/create-admin", async (req, res) => {
     const admin = await User.create({
       name: "Super Admin",
       mobile: "0000000000",
-      userId: 99999,        // IMPORTANT
+      userId: 99999,
       password: hashedPassword,
       walletBalance: 0,
       isAdmin: true
