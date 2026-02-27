@@ -40,8 +40,12 @@ router.post("/admin-login", async (req, res) => {
       });
     }
 
+    // ✅ IMPORTANT: Use Mongo _id (NOT userId)
     const token = jwt.sign(
-      { userId: user.userId, isAdmin: true },
+      {
+        id: user._id,
+        isAdmin: true
+      },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
@@ -64,9 +68,7 @@ router.post("/admin-login", async (req, res) => {
 router.post("/create-admin", async (req, res) => {
   try {
 
-    const existing = await User.findOne({
-      email: "philipsfuturelighting@admin.com"
-    });
+    const existing = await User.findOne({ isAdmin: true });
 
     if (existing) {
       return res.json({ message: "Admin already exists" });
@@ -76,10 +78,11 @@ router.post("/create-admin", async (req, res) => {
 
     const admin = await User.create({
       name: "Super Admin",
-      email: "philipsfuturelighting@admin.com",
+      mobile: "0000000000",
+      userId: 99999,        // IMPORTANT
       password: hashedPassword,
-      isAdmin: true,
-      wallet: 0
+      walletBalance: 0,
+      isAdmin: true
     });
 
     res.json({
@@ -88,10 +91,8 @@ router.post("/create-admin", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Admin creation error:", error);
-    res.status(500).json({
-      message: "Error creating admin"
-    });
+    console.error(error);
+    res.status(500).json({ message: "Error creating admin" });
   }
 });
 

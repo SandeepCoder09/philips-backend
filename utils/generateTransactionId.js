@@ -1,38 +1,37 @@
 function formatDateTime() {
-    const now = new Date();
-    const pad = (n) => n.toString().padStart(2, "0");
-  
-    return (
-      now.getFullYear().toString() +
-      pad(now.getMonth() + 1) +
-      pad(now.getDate()) +
-      pad(now.getHours()) +
-      pad(now.getMinutes()) +
-      pad(now.getSeconds())
-    );
-  }
-  
-  function generateTransactionId(type) {
-    const map = {
-      recharge: "PHRCTR",
-      withdraw: "PHWDTR",
-      purchase: "PHPURTR",
-      earning: "PHEARN",
-      registration_bonus: "PHREGB",
-      referral_bonus: "PHREFB",
-      commission: "PHCMTR",
-      team_bonus: "PHTMBTR",
-      gift: "PHGIFTTR"
-    };
-  
-    const prefix = map[type] || "PHTRX";
-  
-    // 🔐 Add 2 random digits (00–99)
-    const randomTwoDigits = Math.floor(Math.random() * 100)
-      .toString()
-      .padStart(2, "0");
-  
-    return `${prefix}${formatDateTime()}${randomTwoDigits}`;
-  }
-  
-  module.exports = generateTransactionId;
+  const now = new Date();
+  const pad = (n) => n.toString().padStart(2, "0");
+
+  const YYYY = now.getFullYear();
+  const MM = pad(now.getMonth() + 1);
+  const DD = pad(now.getDate());
+  const HH = pad(now.getHours());
+  const MIN = pad(now.getMinutes());
+  const SS = pad(now.getSeconds());
+
+  return `${YYYY}${MM}${DD}${HH}${MIN}${SS}`;
+}
+
+function generateTransactionId(type) {
+
+  const prefixMap = {
+    recharge: "PHRCTR",        // Recharge
+    withdraw: "PHWDTR",        // Withdraw
+    purchase: "PHPURTR",       // Product Purchase
+    earning: "PHEARN",         // Daily Earning
+    commission: "PHCMTR",      // Level Commission
+    registration_bonus: "PHREGB", // Registration Bonus
+    referral_bonus: "PHREFB",     // Direct Referral Bonus
+    team_bonus: "PHTMBTR",        // Team Milestone Bonus
+    gift: "PHGFTTR"               // Gift Code
+  };
+
+  const prefix = prefixMap[type] || "PHTRX";
+
+  // 2 random digits (10–99)
+  const randomTwoDigits = Math.floor(Math.random() * 90 + 10);
+
+  return `${prefix}${formatDateTime()}${randomTwoDigits}`;
+}
+
+module.exports = generateTransactionId;

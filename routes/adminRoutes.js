@@ -4,6 +4,7 @@ const router = express.Router();
 const adminMiddleware = require("../middleware/adminMiddleware");
 
 const {
+  getDashboardStats,
   getAllUsers,
   getAllTransactions,
   getAllBanks,
@@ -12,17 +13,47 @@ const {
 } = require("../controllers/adminController");
 
 
-// ================= USERS =================
+// =====================================================
+// DASHBOARD OVERVIEW
+// GET /api/admin/dashboard
+// =====================================================
+router.get("/dashboard", adminMiddleware, getDashboardStats);
+
+
+// =====================================================
+// USERS
+// GET /api/admin/users
+// =====================================================
 router.get("/users", adminMiddleware, getAllUsers);
 
-// ================= TRANSACTIONS =================
+
+// =====================================================
+// TRANSACTIONS
+// GET /api/admin/transactions
+// =====================================================
 router.get("/transactions", adminMiddleware, getAllTransactions);
 
-// ================= BANKS =================
+
+// =====================================================
+// BANKS
+// GET /api/admin/banks
+// =====================================================
 router.get("/banks", adminMiddleware, getAllBanks);
 
-// ================= WITHDRAWS =================
+
+// =====================================================
+// WITHDRAW REQUESTS
+// GET /api/admin/withdraws
+// =====================================================
 router.get("/withdraws", adminMiddleware, getAllWithdraws);
+
+
+// =====================================================
+// UPDATE WITHDRAW STATUS
+// PUT /api/admin/withdraw/:id
+// body: { status: "under review" | "success" | "rejected" }
+// =====================================================
 router.put("/withdraw/:id", adminMiddleware, updateWithdrawStatus);
+
 
 module.exports = router;

@@ -3,6 +3,7 @@ const Counter = require("../models/Counter");
 const Transaction = require("../models/Transaction");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const generateTransactionId = require("../utils/generateTransactionId");
 
 /* =====================================================
    REGISTER USER
@@ -48,8 +49,8 @@ const registerUser = async (req, res) => {
         value: 9999
       });
     }
-
     
+
     counter.value += 1;
     await counter.save();
 
@@ -84,7 +85,7 @@ const registerUser = async (req, res) => {
       password: hashedPassword,
       userId: newUserId,
       referredById,
-      walletBalance: 0 // ensure safe default
+      walletBalance: 0
     });
 
     /* ===============================
@@ -101,11 +102,11 @@ const registerUser = async (req, res) => {
 
       await Transaction.create({
         userId: newUser.userId,
-        orderId: "REG30-" + Date.now(),
+        orderId: generateTransactionId("registration_bonus"),
         amount: 30,
         type: "registration_bonus",
         status: "success",
-        description: "Registration bonus for using invite code"
+        description: `Registration bonus for using invite code ${referredById}`
       });
     }
 

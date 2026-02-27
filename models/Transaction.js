@@ -2,6 +2,22 @@ const mongoose = require("mongoose");
 
 const transactionSchema = new mongoose.Schema(
   {
+
+    auditLog: [
+      {
+        action: String,
+        adminId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User"
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now
+        },
+        ip: String
+      }
+    ],
+
     // 🔹 Numeric userId (same as User model)
     userId: {
       type: Number,
