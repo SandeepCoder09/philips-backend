@@ -5,7 +5,7 @@ const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 
 /* =====================================================
-   REFERRAL DASHBOARD (INCOME ONLY)
+   REFERRAL DASHBOARD (SUCCESS COMMISSION ONLY)
 ===================================================== */
 router.get("/dashboard", authMiddleware, async (req, res) => {
   try {
@@ -37,44 +37,38 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
     startOfWeek.setDate(startOfWeek.getDate() - 7);
 
     /* ===============================
-       COMMISSION DATA
+       SUCCESS COMMISSION ONLY
     =============================== */
 
     const transactions = await Transaction.find({
       userId,
-      type: "commission"
+      type: "commission",
+      status: "success"   // 🔥 ONLY SUCCESS
     });
 
     let totalIncome = 0;
     let todayIncome = 0;
     let yesterdayIncome = 0;
     let weekIncome = 0;
-    let pendingIncome = 0;
     let level1Income = 0;
     let level2Income = 0;
     let level3Income = 0;
 
     transactions.forEach(tx => {
 
-      if (tx.status === "success") {
+      totalIncome += tx.amount;
 
-        totalIncome += tx.amount;
+      if (tx.createdAt >= startOfToday)
+        todayIncome += tx.amount;
 
-        if (tx.createdAt >= startOfToday)
-          todayIncome += tx.amount;
+      if (
+        tx.createdAt >= startOfYesterday &&
+        tx.createdAt < startOfToday
+      )
+        yesterdayIncome += tx.amount;
 
-        if (
-          tx.createdAt >= startOfYesterday &&
-          tx.createdAt < startOfToday
-        )
-          yesterdayIncome += tx.amount;
-
-        if (tx.createdAt >= startOfWeek)
-          weekIncome += tx.amount;
-      }
-
-      if (tx.status === "pending")
-        pendingIncome += tx.amount;
+      if (tx.createdAt >= startOfWeek)
+        weekIncome += tx.amount;
 
       if (tx.description?.includes("Level 1"))
         level1Income += tx.amount;
@@ -112,28 +106,22 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
     const isQualified = totalPurchaseAmount >= 399;
 
     /* ===============================
-       RESPONSE (NO TEAM DATA HERE)
+       RESPONSE
     =============================== */
 
     res.json({
       success: true,
 
-      // Commission Overview
       totalPromotionIncome: totalIncome,
       todayIncome,
       yesterdayIncome,
       weekIncome,
-      pendingIncome,
 
-      // Level Income Breakdown
       level1Income,
       level2Income,
       level3Income,
 
-      // Bonus
       invitationReward: 0,
-
-      // Qualification
       isQualified
     });
 
@@ -148,7 +136,7 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
 
 
 /* =====================================================
-   MY TEAM OVERVIEW (STRUCTURE ONLY)
+   MY TEAM OVERVIEW (NO PENDING ANYWHERE)
 ===================================================== */
 router.get("/supervisor-team", authMiddleware, async (req, res) => {
   try {
@@ -174,15 +162,19 @@ router.get("/supervisor-team", authMiddleware, async (req, res) => {
 
     const level1Ids = level1Users.map(u => u.userId);
 
-    const level2Users = await User.find({
-      referredById: { $in: level1Ids }
-    }).select("userId createdAt");
+    const level2Users = level1Ids.length > 0
+      ? await User.find({
+          referredById: { $in: level1Ids }
+        }).select("userId createdAt")
+      : [];
 
     const level2Ids = level2Users.map(u => u.userId);
 
-    const level3Users = await User.find({
-      referredById: { $in: level2Ids }
-    }).select("userId createdAt");
+    const level3Users = level2Ids.length > 0
+      ? await User.find({
+          referredById: { $in: level2Ids }
+        }).select("userId createdAt")
+      : [];
 
     const allMembers = [
       ...level1Users.map(u => ({ ...u.toObject(), level: 1 })),
@@ -193,24 +185,26 @@ router.get("/supervisor-team", authMiddleware, async (req, res) => {
     const allIds = allMembers.map(m => m.userId);
 
     /* ===============================
-       TEAM RECHARGE
+       TEAM RECHARGE (SUCCESS ONLY)
     =============================== */
 
-    const rechargeData = await Transaction.aggregate([
-      {
-        $match: {
-          userId: { $in: allIds },
-          type: "recharge",
-          status: "success"
-        }
-      },
-      {
-        $group: {
-          _id: "$userId",
-          totalRecharge: { $sum: "$amount" }
-        }
-      }
-    ]);
+    const rechargeData = allIds.length > 0
+      ? await Transaction.aggregate([
+          {
+            $match: {
+              userId: { $in: allIds },
+              type: "recharge",
+              status: "success"
+            }
+          },
+          {
+            $group: {
+              _id: "$userId",
+              totalRecharge: { $sum: "$amount" }
+            }
+          }
+        ])
+      : [];
 
     const rechargeMap = {};
     rechargeData.forEach(r => {
@@ -218,7 +212,7 @@ router.get("/supervisor-team", authMiddleware, async (req, res) => {
     });
 
     /* ===============================
-       SUPERVISOR COMMISSION
+       SUPERVISOR COMMISSION (SUCCESS ONLY)
     =============================== */
 
     const commissionTx = await Transaction.find({
@@ -267,14 +261,12 @@ router.get("/supervisor-team", authMiddleware, async (req, res) => {
     res.json({
       success: true,
 
-      // Team Structure
       totalMembers: team.length,
       directMembers: level1Users.length,
       level1Count: level1Users.length,
       level2Count: level2Users.length,
       level3Count: level3Users.length,
 
-      // Team Financial
       totalTeamRecharge,
       totalTeamCommission,
 
