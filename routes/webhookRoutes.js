@@ -4,6 +4,9 @@ const router = express.Router();
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 
+/* =====================================================
+   CASHFREE WEBHOOK
+===================================================== */
 router.post("/cashfree", async (req, res) => {
   try {
     console.log("🔥 Webhook hit");
@@ -11,6 +14,7 @@ router.post("/cashfree", async (req, res) => {
 
     const body = req.body;
 
+    // Validate payload structure
     if (!body?.data?.order || !body?.data?.payment) {
       console.log("❌ Invalid payload structure");
       return res.status(200).json({ message: "Invalid payload" });
@@ -24,12 +28,13 @@ router.post("/cashfree", async (req, res) => {
     console.log("Payment Status:", payment_status);
     console.log("Order Amount:", order_amount);
 
-    // ✅ CHECK PAYMENT STATUS CORRECTLY
+    // Only process SUCCESS payments
     if (payment_status !== "SUCCESS") {
       console.log("ℹ️ Payment not successful, ignoring");
       return res.status(200).json({ message: "Ignored" });
     }
 
+    // Find transaction
     const transaction = await Transaction.findOne({ orderId: order_id });
 
     if (!transaction) {
@@ -37,23 +42,30 @@ router.post("/cashfree", async (req, res) => {
       return res.status(200).json({ message: "Transaction not found" });
     }
 
+    // Prevent double credit
     if (transaction.status === "success") {
       console.log("⚠️ Already processed");
       return res.status(200).json({ message: "Already processed" });
     }
 
-    // Update transaction
+    // Update transaction status
     transaction.status = "success";
     await transaction.save();
 
-    // Credit wallet
-    await User.findByIdAndUpdate(
-      transaction.userId,
+    // ✅ FIXED: Update using numeric userId
+    const updatedUser = await User.findOneAndUpdate(
+      { userId: transaction.userId },
       { $inc: { walletBalance: Number(order_amount) } },
-      { returnDocument: "after" }
+      { new: true }
     );
 
+    if (!updatedUser) {
+      console.log("❌ User not found for wallet credit");
+      return res.status(200).json({ message: "User not found" });
+    }
+
     console.log("✅ Wallet credited successfully");
+    console.log("💰 New Wallet Balance:", updatedUser.walletBalance);
 
     return res.status(200).json({ message: "Success" });
 
