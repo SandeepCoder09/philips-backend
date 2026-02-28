@@ -109,7 +109,7 @@ const registerUser = async (req, res) => {
 
 
 /* =====================================================
-   LOGIN USER (PRODUCTION SAFE VERSION)
+   LOGIN USER (UPDATED MESSAGE VERSION)
 ===================================================== */
 const loginUser = async (req, res) => {
   try {
@@ -124,13 +124,15 @@ const loginUser = async (req, res) => {
 
     const user = await User.findOne({ mobile });
 
+    // 🔴 User not registered
     if (!user) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        message: "Invalid credentials"
+        message: "User not registered"
       });
     }
 
+    // 🔴 Account suspended
     if (user.isBanned) {
       return res.status(403).json({
         success: false,
@@ -140,10 +142,11 @@ const loginUser = async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password);
 
+    // 🔴 Wrong password
     if (!isMatch) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "Invalid credentials"
+        message: "Wrong password"
       });
     }
 
@@ -154,14 +157,17 @@ const loginUser = async (req, res) => {
     /* ================= STORE DEVICE HISTORY ================= */
     try {
       await UserDevice.create({
-        userId: user._id, // ObjectId reference
-        ipAddress: req.headers["x-forwarded-for"] || req.socket.remoteAddress || "Unknown",
+        userId: user._id,
+        ipAddress:
+          req.headers["x-forwarded-for"] ||
+          req.socket.remoteAddress ||
+          "Unknown",
         userAgent: req.headers["user-agent"] || "Unknown",
         deviceInfo: req.headers["sec-ch-ua"] || "Browser"
       });
     } catch (deviceError) {
       console.error("Device logging failed:", deviceError.message);
-      // Do NOT break login if device logging fails
+
     }
 
     /* ================= GENERATE TOKEN ================= */
@@ -174,7 +180,7 @@ const loginUser = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({
+    res.status(200).json({
       success: true,
       message: "Login successful",
       token,
