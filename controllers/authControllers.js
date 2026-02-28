@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Counter = require("../models/Counter");
 const Transaction = require("../models/Transaction");
 const UserDevice = require("../models/UserDevice");
+const BankAccount = require("../models/BankAccount");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const generateTransactionId = require("../utils/generateTransactionId");
@@ -12,7 +13,7 @@ const generateTransactionId = require("../utils/generateTransactionId");
 ===================================================== */
 const registerUser = async (req, res) => {
   try {
-    const { name, mobile, password, inviteCode } = req.body;
+    let { name, mobile, password, inviteCode } = req.body;
 
     if (!name || !mobile || !password) {
       return res.status(400).json({
@@ -20,6 +21,10 @@ const registerUser = async (req, res) => {
         message: "Name, mobile and password are required"
       });
     }
+
+    // Normalize mobile (remove +91 if sent)
+    mobile = mobile.replace("+91", "");
+    mobile = "+91" + mobile;
 
     const existingUser = await User.findOne({ mobile });
     if (existingUser) {
@@ -31,7 +36,7 @@ const registerUser = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    /* ================= GENERATE SAFE USER ID ================= */
+    /* ================= GENERATE USER ID ================= */
     let counter = await Counter.findOne({ name: "userId" });
 
     if (!counter) {
@@ -46,7 +51,7 @@ const registerUser = async (req, res) => {
 
     const newUserId = counter.value;
 
-    /* ================= VALIDATE INVITE CODE ================= */
+    /* ================= VALIDATE INVITE ================= */
     let referredById = null;
 
     if (inviteCode) {
@@ -109,11 +114,11 @@ const registerUser = async (req, res) => {
 
 
 /* =====================================================
-   LOGIN USER (UPDATED MESSAGE VERSION)
+   LOGIN USER (BACKWARD COMPATIBLE)
 ===================================================== */
 const loginUser = async (req, res) => {
   try {
-    const { mobile, password } = req.body;
+    let { mobile, password } = req.body;
 
     if (!mobile || !password) {
       return res.status(400).json({
@@ -122,9 +127,17 @@ const loginUser = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ mobile });
+    const cleanMobile = mobile.replace("+91", "");
 
-    // 🔴 User not registered
+    // Match old & new format
+    const user = await User.findOne({
+      $or: [
+        { mobile },
+        { mobile: cleanMobile },
+        { mobile: "+91" + cleanMobile }
+      ]
+    });
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -132,7 +145,7 @@ const loginUser = async (req, res) => {
       });
     }
 
-    // 🔴 Account suspended
+    
     if (user.isBanned) {
       return res.status(403).json({
         success: false,
@@ -142,7 +155,7 @@ const loginUser = async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password);
 
-    // 🔴 Wrong password
+
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -150,11 +163,15 @@ const loginUser = async (req, res) => {
       });
     }
 
-    /* ================= UPDATE LAST LOGIN ================= */
+    /* ===== AUTO FIX OLD MOBILE FORMAT ===== */
+    if (!user.mobile.startsWith("+91")) {
+      user.mobile = "+91" + cleanMobile;
+    }
+
     user.lastLogin = new Date();
     await user.save();
 
-    /* ================= STORE DEVICE HISTORY ================= */
+    /* ================= DEVICE HISTORY ================= */
     try {
       await UserDevice.create({
         userId: user._id,
@@ -166,14 +183,14 @@ const loginUser = async (req, res) => {
         deviceInfo: req.headers["sec-ch-ua"] || "Browser"
       });
     } catch (deviceError) {
-      console.error("Device logging failed:", deviceError.message);
-
+      console.error("Device log failed:", deviceError.message);
     }
 
-    /* ================= GENERATE TOKEN ================= */
+    /* ================= TOKEN ================= */
     const token = jwt.sign(
       {
         userId: user.userId,
+        mongoId: user._id, // IMPORTANT FOR BANK FIX
         isAdmin: user.isAdmin || false
       },
       process.env.JWT_SECRET,
@@ -203,8 +220,36 @@ const loginUser = async (req, res) => {
 };
 
 
+/* =====================================================
+   GET USER BANKS (FIXED FOR OLD USERS)
+===================================================== */
+const getUserBanks = async (req, res) => {
+  try {
+    const { userId, mongoId } = req.user;
+
+    // 🔥 Support both numeric userId & ObjectId
+    const banks = await BankAccount.find({
+      $or: [
+        { userId: userId },
+        { userId: mongoId }
+      ]
+    });
+
+    res.status(200).json(banks);
+
+  } catch (error) {
+    console.error("Bank Fetch Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load bank accounts"
+    });
+  }
+};
+
+
 module.exports = {
   registerUser,
-  loginUser
+  loginUser,
+  getUserBanks
 };
 
