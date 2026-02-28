@@ -17,6 +17,15 @@ const userSchema = new mongoose.Schema(
       trim: true
     },
 
+    // 🔹 NEW EMAIL FIELD (Required for Admin Only)
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true // allows normal users without email
+    },
+
     password: {
       type: String,
       required: true
@@ -28,7 +37,9 @@ const userSchema = new mongoose.Schema(
     },
 
     banReason: String,
+
     lastLogin: Date,
+
     riskScore: {
       type: Number,
       default: 0
@@ -61,25 +72,21 @@ const userSchema = new mongoose.Schema(
 
     /* ================= QUALIFICATION SYSTEM ================= */
 
-    // User becomes qualified after purchasing product >= 399
     isQualified: {
       type: Boolean,
       default: false
     },
 
-    // Count of direct referrals who became qualified
     qualifiedDirectCount: {
       type: Number,
       default: 0
     },
 
-    // ₹50 first direct bonus (only once lifetime)
     firstDirectBonusGiven: {
       type: Boolean,
       default: false
     },
 
-    // ₹300 milestone bonus after 3 qualified directs
     teamBonusGiven: {
       type: Boolean,
       default: false
@@ -109,16 +116,26 @@ const userSchema = new mongoose.Schema(
   {
     timestamps: true,
 
-    // Hide internal Mongo fields from API response
     toJSON: {
       transform: function (doc, ret) {
         delete ret._id;
         delete ret.__v;
+        delete ret.password; // 🔐 NEVER expose password
         return ret;
       }
     }
   }
 );
+
+/* =====================================================
+   ADMIN VALIDATION
+===================================================== */
+
+userSchema.pre("save", function () {
+  if (this.isAdmin && !this.email) {
+    throw new Error("Admin must have an email");
+  }
+});
 
 module.exports =
   mongoose.models.User ||
