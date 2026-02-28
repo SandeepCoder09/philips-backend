@@ -9,7 +9,7 @@ const generateTransactionId = require("../utils/generateTransactionId");
 
 
 /* =====================================================
-   REGISTER USER
+   REGISTER USER (REAL-TIME ENABLED)
 ===================================================== */
 const registerUser = async (req, res) => {
   try {
@@ -22,7 +22,7 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Normalize mobile (remove +91 if sent)
+    // Normalize mobile
     mobile = mobile.replace("+91", "");
     mobile = "+91" + mobile;
 
@@ -97,6 +97,14 @@ const registerUser = async (req, res) => {
       });
     }
 
+    /* =====================================================
+       🔥 REAL-TIME EVENT FOR ADMIN
+    ===================================================== */
+    const io = req.app.get("io");
+    if (io) {
+      io.to("admin_room").emit("user_registered");
+    }
+
     res.status(201).json({
       success: true,
       message: "User registered successfully",
@@ -114,7 +122,7 @@ const registerUser = async (req, res) => {
 
 
 /* =====================================================
-   LOGIN USER (BACKWARD COMPATIBLE)
+   LOGIN USER
 ===================================================== */
 const loginUser = async (req, res) => {
   try {
@@ -129,7 +137,7 @@ const loginUser = async (req, res) => {
 
     const cleanMobile = mobile.replace("+91", "");
 
-    // Match old & new format
+
     const user = await User.findOne({
       $or: [
         { mobile },
@@ -145,7 +153,7 @@ const loginUser = async (req, res) => {
       });
     }
 
-    
+
     if (user.isBanned) {
       return res.status(403).json({
         success: false,
@@ -163,7 +171,7 @@ const loginUser = async (req, res) => {
       });
     }
 
-    /* ===== AUTO FIX OLD MOBILE FORMAT ===== */
+
     if (!user.mobile.startsWith("+91")) {
       user.mobile = "+91" + cleanMobile;
     }
@@ -171,7 +179,7 @@ const loginUser = async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    /* ================= DEVICE HISTORY ================= */
+
     try {
       await UserDevice.create({
         userId: user._id,
@@ -186,11 +194,11 @@ const loginUser = async (req, res) => {
       console.error("Device log failed:", deviceError.message);
     }
 
-    /* ================= TOKEN ================= */
+
     const token = jwt.sign(
       {
         userId: user.userId,
-        mongoId: user._id, // IMPORTANT FOR BANK FIX
+        mongoId: user._id,
         isAdmin: user.isAdmin || false
       },
       process.env.JWT_SECRET,
@@ -221,13 +229,13 @@ const loginUser = async (req, res) => {
 
 
 /* =====================================================
-   GET USER BANKS (FIXED FOR OLD USERS)
+   GET USER BANKS
 ===================================================== */
 const getUserBanks = async (req, res) => {
   try {
     const { userId, mongoId } = req.user;
 
-    // 🔥 Support both numeric userId & ObjectId
+
     const banks = await BankAccount.find({
       $or: [
         { userId: userId },

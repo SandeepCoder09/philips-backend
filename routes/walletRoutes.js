@@ -23,11 +23,7 @@ router.post("/bind-bank", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    const existing = await BankAccount.findOne({
-      userId,
-      accountNumber
-    });
-
+    const existing = await BankAccount.findOne({ userId, accountNumber });
     if (existing) {
       return res.status(400).json({ message: "Bank already linked" });
     }
@@ -40,9 +36,7 @@ router.post("/bind-bank", authMiddleware, async (req, res) => {
       bankName
     });
 
-    res.status(201).json({
-      message: "Bank linked successfully"
-    });
+    res.status(201).json({ message: "Bank linked successfully" });
 
   } catch (error) {
     console.error("Bind bank error:", error);
@@ -76,15 +70,11 @@ router.post("/create-order", authMiddleware, async (req, res) => {
     const userId = req.user.userId;
 
     if (!amount || amount < 10) {
-      return res.status(400).json({
-        message: "Minimum recharge is ₹10"
-      });
+      return res.status(400).json({ message: "Minimum recharge is ₹10" });
     }
 
     const user = await User.findOne({ userId });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     const orderId = generateTransactionId("recharge");
 
@@ -132,7 +122,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   CASHFREE WEBHOOK
+   CASHFREE WEBHOOK (REAL-TIME ENABLED)
 ===================================================== */
 router.post("/cashfree-webhook", async (req, res) => {
   try {
@@ -146,6 +136,8 @@ router.post("/cashfree-webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
+    const io = req.app.get("io");
+
     if (order_status === "PAID") {
 
       transaction.status = "success";
@@ -155,11 +147,19 @@ router.post("/cashfree-webhook", async (req, res) => {
         { userId: transaction.userId },
         { $inc: { walletBalance: transaction.amount } }
       );
+
+      if (io) {
+        io.to("admin_room").emit("transaction_updated");
+      }
     }
 
     if (order_status === "FAILED") {
       transaction.status = "failed";
       await transaction.save();
+
+      if (io) {
+        io.to("admin_room").emit("transaction_updated");
+      }
     }
 
     res.sendStatus(200);
@@ -218,7 +218,7 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   WITHDRAW REQUEST
+   WITHDRAW REQUEST (REAL-TIME ENABLED)
 ===================================================== */
 router.post("/withdraw", authMiddleware, async (req, res) => {
   try {
@@ -254,6 +254,12 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
       status: "processing",
       description: "Withdrawal Request"
     });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("admin_room").emit("withdraw_updated");
+      io.to("admin_room").emit("transaction_updated");
+    }
 
     res.json({
       message: "Withdrawal request submitted",

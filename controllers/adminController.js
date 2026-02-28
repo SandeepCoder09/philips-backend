@@ -153,7 +153,7 @@ exports.getAllUsers = async (req, res) => {
 
 
 // =====================================================
-// BAN / UNBAN USER (FIXED FOR NUMERIC userId)
+// BAN / UNBAN USER (REAL-TIME SAFE)
 // =====================================================
 exports.toggleUserBan = async (req, res) => {
   try {
@@ -179,6 +179,12 @@ exports.toggleUserBan = async (req, res) => {
 
     user.isBanned = banned;
     await user.save();
+
+    // 🔥 Real-time emit
+    const io = req.app.get("io");
+    if (io) {
+      io.to("admin_room").emit("user_registered");
+    }
 
     res.json({
       message: banned
@@ -322,7 +328,7 @@ exports.getAllWithdraws = async (req, res) => {
 
 
 // =====================================================
-// UPDATE WITHDRAW STATUS
+// UPDATE WITHDRAW STATUS (REAL-TIME SAFE)
 // =====================================================
 exports.updateWithdrawStatus = async (req, res) => {
   try {
@@ -363,6 +369,13 @@ exports.updateWithdrawStatus = async (req, res) => {
     });
 
     await transaction.save();
+
+    // 🔥 Real-time emit
+    const io = req.app.get("io");
+    if (io) {
+      io.to("admin_room").emit("withdraw_updated");
+      io.to("admin_room").emit("transaction_updated");
+    }
 
     res.json({ message: "Withdraw updated successfully" });
 
