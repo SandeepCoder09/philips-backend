@@ -15,9 +15,7 @@ router.get("/list", authMiddleware, async (req, res) => {
   try {
 
     const userId = req.user.userId;
-
     const products = await Product.find({ isActive: true });
-
     const userPurchases = await PurchasedProduct.find({ userId });
 
     const enrichedProducts = products.map(product => {
@@ -38,7 +36,7 @@ router.get("/list", authMiddleware, async (req, res) => {
         validityDays: product.validityDays,
         maxPurchaseLimit: product.maxPurchaseLimit,
         remaining: remaining > 0 ? remaining : 0,
-        image: product.image   // 🔥 image from DB
+        image: product.image
       };
     });
 
@@ -69,7 +67,6 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    /* 🔥 FETCH PRODUCT */
     const product = await Product.findOne({ code: productId });
 
     if (!product || !product.isActive) {
@@ -88,7 +85,6 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    /* 🔥 PURCHASE LIMIT CHECK */
     const purchaseCount = await PurchasedProduct.countDocuments({
       userId: user.userId,
       productId: product._id
@@ -101,7 +97,6 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    /* 🔥 WALLET CHECK */
     if (user.walletBalance < product.price) {
       return res.status(400).json({
         success: false,
@@ -109,16 +104,13 @@ router.post("/buy", authMiddleware, async (req, res) => {
       });
     }
 
-    /* 🔥 WALLET DEDUCT */
     user.walletBalance -= product.price;
     await user.save();
 
-    /* 🔥 EXPIRY CALCULATION */
     const purchaseDate = new Date();
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + product.validityDays);
 
-    /* 🔥 SAVE PURCHASE */
     const purchase = new PurchasedProduct({
       userId: user.userId,
       productId: product._id,
@@ -131,7 +123,6 @@ router.post("/buy", authMiddleware, async (req, res) => {
 
     await purchase.save();
 
-    /* 🔥 TRANSACTION ENTRY */
     await Transaction.create({
       userId: user.userId,
       orderId: generateTransactionId("purchase"),
@@ -142,9 +133,7 @@ router.post("/buy", authMiddleware, async (req, res) => {
       description: `Purchased ${product.name}`
     });
 
-    /* =====================================================
-       QUALIFICATION LOGIC (UNCHANGED)
-    ===================================================== */
+    /* QUALIFICATION LOGIC UNTOUCHED */
     if (product.price >= 399 && !user.isQualified) {
 
       user.isQualified = true;
@@ -160,9 +149,7 @@ router.post("/buy", authMiddleware, async (req, res) => {
 
           sponsor.qualifiedDirectCount += 1;
 
-          /* ===== ₹50 FIRST DIRECT BONUS ===== */
           if (!sponsor.firstDirectBonusGiven) {
-
             sponsor.walletBalance += 50;
             sponsor.firstDirectBonusGiven = true;
 
@@ -176,12 +163,10 @@ router.post("/buy", authMiddleware, async (req, res) => {
             });
           }
 
-          /* ===== ₹300 TEAM BONUS ===== */
           if (
             sponsor.qualifiedDirectCount >= 3 &&
             !sponsor.teamBonusGiven
           ) {
-
             sponsor.walletBalance += 300;
             sponsor.teamBonusGiven = true;
 
@@ -216,7 +201,7 @@ router.post("/buy", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   GET MY PRODUCTS (WITH IMAGE POPULATION)
+   GET MY PRODUCTS (RETURN LAST EARNING DATE)
 ===================================================== */
 router.get("/my", authMiddleware, async (req, res) => {
   try {
@@ -226,23 +211,21 @@ router.get("/my", authMiddleware, async (req, res) => {
     })
       .populate({
         path: "productId",
-        select: "image name" // 🔥 only what we need
+        select: "image name"
       })
       .sort({ createdAt: -1 });
 
-    const formattedProducts = purchases.map(p => {
-
-      return {
-        _id: p._id,
-        name: p.name,
-        price: p.price,
-        dailyEarning: p.dailyEarning,
-        totalEarned: p.totalEarned,
-        purchaseDate: p.purchaseDate,
-        endDate: p.endDate,
-        image: p.productId?.image || null   // 🔥 THIS is the fix
-      };
-    });
+    const formattedProducts = purchases.map(p => ({
+      _id: p._id,
+      name: p.name,
+      price: p.price,
+      dailyEarning: p.dailyEarning,
+      totalEarned: p.totalEarned || 0,
+      purchaseDate: p.purchaseDate,
+      endDate: p.endDate,
+      lastEarningDate: p.lastEarningDate || null, // 🔥 added
+      image: p.productId?.image || null
+    }));
 
     res.json({
       success: true,
@@ -259,7 +242,7 @@ router.get("/my", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   COLLECT DAILY INCOME (24H SYSTEM - ATOMIC SAFE)
+   COLLECT DAILY INCOME (ATOMIC SAFE VERSION)
 ===================================================== */
 router.post("/collect/:id", authMiddleware, async (req, res) => {
   try {
@@ -268,7 +251,6 @@ router.post("/collect/:id", authMiddleware, async (req, res) => {
     const purchaseId = req.params.id;
     const now = new Date();
 
-    // 1️⃣ Find purchase safely
     const purchase = await PurchasedProduct.findOne({
       _id: purchaseId,
       userId,
@@ -282,7 +264,6 @@ router.post("/collect/:id", authMiddleware, async (req, res) => {
       });
     }
 
-    // 2️⃣ Expiry check
     if (now > purchase.endDate) {
       purchase.isActive = false;
       await purchase.save();
@@ -293,7 +274,6 @@ router.post("/collect/:id", authMiddleware, async (req, res) => {
       });
     }
 
-    // 3️⃣ 24-hour validation
     const last = purchase.lastEarningDate
       ? new Date(purchase.lastEarningDate)
       : new Date(purchase.purchaseDate);
@@ -308,49 +288,44 @@ router.post("/collect/:id", authMiddleware, async (req, res) => {
       });
     }
 
-    // 4️⃣ Max return check
-    if (
-      purchase.maxReturn &&
-      purchase.totalEarned >= purchase.maxReturn
-    ) {
-      purchase.isActive = false;
-      await purchase.save();
-
-      return res.status(400).json({
-        success: false,
-        message: "Maximum return reached"
-      });
-    }
-
     const amount = purchase.dailyEarning;
 
-    if (amount <= 0) {
+    if (!amount || amount <= 0) {
       return res.status(400).json({
         success: false,
         message: "Invalid earning amount"
       });
     }
 
-    // 5️⃣ Atomic wallet update
+    const updatedPurchase = await PurchasedProduct.findOneAndUpdate(
+      {
+        _id: purchaseId,
+        userId,
+        isActive: true,
+        $or: [
+          { lastEarningDate: null },
+          { lastEarningDate: { $lte: last } }
+        ]
+      },
+      {
+        $inc: { totalEarned: amount },
+        $set: { lastEarningDate: now }
+      },
+      { new: true }
+    );
+
+    if (!updatedPurchase) {
+      return res.status(400).json({
+        success: false,
+        message: "Already collected or not eligible"
+      });
+    }
+
     await User.updateOne(
       { userId },
       { $inc: { walletBalance: amount } }
     );
 
-    // 6️⃣ Update purchase safely
-    purchase.totalEarned += amount;
-    purchase.lastEarningDate = now;
-
-    if (
-      purchase.maxReturn &&
-      purchase.totalEarned >= purchase.maxReturn
-    ) {
-      purchase.isActive = false;
-    }
-
-    await purchase.save();
-
-    // 7️⃣ Create transaction
     await Transaction.create({
       userId,
       orderId: generateTransactionId("COLLECT"),
@@ -365,9 +340,7 @@ router.post("/collect/:id", authMiddleware, async (req, res) => {
       success: true,
       message: "Income collected successfully",
       amount,
-      nextCollectAt: new Date(
-        now.getTime() + 24 * 60 * 60 * 1000
-      )
+      nextCollectAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
     });
 
   } catch (error) {
@@ -380,14 +353,12 @@ router.post("/collect/:id", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   GET COLLECT HISTORY (EARNING HISTORY)
+   GET COLLECT HISTORY
 ===================================================== */
 router.get("/collect-history", authMiddleware, async (req, res) => {
   try {
 
     const userId = req.user.userId;
-
-    // Optional pagination
     const page = parseInt(req.query.page) || 1;
     const limit = 20;
     const skip = (page - 1) * limit;
@@ -405,13 +376,6 @@ router.get("/collect-history", authMiddleware, async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    const formatted = earnings.map(t => ({
-      transactionId: t.orderId,
-      productName: t.relatedProduct?.name || "Product",
-      amount: t.amount,
-      collectedAt: t.createdAt
-    }));
-
     const totalCount = await Transaction.countDocuments({
       userId,
       type: "earning",
@@ -423,7 +387,7 @@ router.get("/collect-history", authMiddleware, async (req, res) => {
       page,
       totalPages: Math.ceil(totalCount / limit),
       totalRecords: totalCount,
-      history: formatted
+      history: earnings
     });
 
   } catch (error) {
