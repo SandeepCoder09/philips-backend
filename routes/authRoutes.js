@@ -128,9 +128,9 @@ router.post("/create-admin", async (req, res) => {
   } catch (error) {
     console.error("Create admin error:", error);
     res.status(500).json({
-      message: "Error creating admin",
-      error: error.message
-    });
+  message: "Error creating admin",
+  error: error.message
+});
   }
 });
 

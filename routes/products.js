@@ -258,4 +258,181 @@ router.get("/my", authMiddleware, async (req, res) => {
   }
 });
 
+/* =====================================================
+   COLLECT DAILY INCOME (24H SYSTEM - ATOMIC SAFE)
+===================================================== */
+router.post("/collect/:id", authMiddleware, async (req, res) => {
+  try {
+
+    const userId = req.user.userId;
+    const purchaseId = req.params.id;
+    const now = new Date();
+
+    // 1️⃣ Find purchase safely
+    const purchase = await PurchasedProduct.findOne({
+      _id: purchaseId,
+      userId,
+      isActive: true
+    });
+
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found or inactive"
+      });
+    }
+
+    // 2️⃣ Expiry check
+    if (now > purchase.endDate) {
+      purchase.isActive = false;
+      await purchase.save();
+
+      return res.status(400).json({
+        success: false,
+        message: "Product expired"
+      });
+    }
+
+    // 3️⃣ 24-hour validation
+    const last = purchase.lastEarningDate
+      ? new Date(purchase.lastEarningDate)
+      : new Date(purchase.purchaseDate);
+
+    const nextEligible = new Date(last.getTime() + 24 * 60 * 60 * 1000);
+
+    if (now < nextEligible) {
+      return res.status(400).json({
+        success: false,
+        message: "Not eligible yet",
+        nextCollectAt: nextEligible
+      });
+    }
+
+    // 4️⃣ Max return check
+    if (
+      purchase.maxReturn &&
+      purchase.totalEarned >= purchase.maxReturn
+    ) {
+      purchase.isActive = false;
+      await purchase.save();
+
+      return res.status(400).json({
+        success: false,
+        message: "Maximum return reached"
+      });
+    }
+
+    const amount = purchase.dailyEarning;
+
+    if (amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid earning amount"
+      });
+    }
+
+    // 5️⃣ Atomic wallet update
+    await User.updateOne(
+      { userId },
+      { $inc: { walletBalance: amount } }
+    );
+
+    // 6️⃣ Update purchase safely
+    purchase.totalEarned += amount;
+    purchase.lastEarningDate = now;
+
+    if (
+      purchase.maxReturn &&
+      purchase.totalEarned >= purchase.maxReturn
+    ) {
+      purchase.isActive = false;
+    }
+
+    await purchase.save();
+
+    // 7️⃣ Create transaction
+    await Transaction.create({
+      userId,
+      orderId: generateTransactionId("COLLECT"),
+      amount,
+      type: "earning",
+      status: "success",
+      relatedProduct: purchase._id,
+      description: `Collected daily income from ${purchase.name}`
+    });
+
+    return res.json({
+      success: true,
+      message: "Income collected successfully",
+      amount,
+      nextCollectAt: new Date(
+        now.getTime() + 24 * 60 * 60 * 1000
+      )
+    });
+
+  } catch (error) {
+    console.error("Collect Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"
+    });
+  }
+});
+
+/* =====================================================
+   GET COLLECT HISTORY (EARNING HISTORY)
+===================================================== */
+router.get("/collect-history", authMiddleware, async (req, res) => {
+  try {
+
+    const userId = req.user.userId;
+
+    // Optional pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    const earnings = await Transaction.find({
+      userId,
+      type: "earning",
+      status: "success"
+    })
+      .populate({
+        path: "relatedProduct",
+        select: "name"
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const formatted = earnings.map(t => ({
+      transactionId: t.orderId,
+      productName: t.relatedProduct?.name || "Product",
+      amount: t.amount,
+      collectedAt: t.createdAt
+    }));
+
+    const totalCount = await Transaction.countDocuments({
+      userId,
+      type: "earning",
+      status: "success"
+    });
+
+    res.json({
+      success: true,
+      page,
+      totalPages: Math.ceil(totalCount / limit),
+      totalRecords: totalCount,
+      history: formatted
+    });
+
+  } catch (error) {
+    console.error("Collect History Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error"
+    });
+  }
+});
+
 module.exports = router;

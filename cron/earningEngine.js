@@ -33,9 +33,9 @@ function generateTransactionId(prefix) {
 }
 
 // ==============================
-// DAILY CRON (12:05 AM)
+// MAIN EARNING FUNCTION
 // ==============================
-cron.schedule("5 0 * * *", async () => {
+async function runDailyEarnings() {
   console.log("🔄 Running Daily Earning Engine...");
 
   try {
@@ -112,13 +112,13 @@ cron.schedule("5 0 * * *", async () => {
 
           if (!sponsor) break;
 
-          // Must be qualified
+          // Sponsor must be qualified
           if (!sponsor.isQualified) {
             currentUser = sponsor;
             continue;
           }
 
-          // Must have at least one active product
+          // Sponsor must have at least one active product
           const hasActiveProduct = await PurchasedProduct.exists({
             userId: sponsor.userId,
             isActive: true
@@ -156,9 +156,7 @@ cron.schedule("5 0 * * *", async () => {
           currentUser = sponsor;
         }
 
-        console.log(
-          `✅ Processed product for user ${user.userId}`
-        );
+        console.log(`✅ Processed user ${user.userId}`);
 
       } catch (innerError) {
         console.error("Product Processing Error:", innerError);
@@ -170,5 +168,24 @@ cron.schedule("5 0 * * *", async () => {
   } catch (error) {
     console.error("❌ Earning Engine Fatal Error:", error);
   }
+}
 
-});
+// ==============================
+// CRON JOB (12:05 AM IST)
+// ==============================
+cron.schedule(
+  "5 0 * * *",
+  async () => {
+    await runDailyEarnings();
+  },
+  {
+    timezone: "Asia/Kolkata"
+  }
+);
+
+// ==============================
+// EXPORT FOR MANUAL TRIGGER
+// ==============================
+module.exports = {
+  runDailyEarnings
+};

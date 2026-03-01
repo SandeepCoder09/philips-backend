@@ -2,9 +2,14 @@ const express = require("express");
 const router = express.Router();
 
 const adminMiddleware = require("../middleware/adminMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
 const adminLogger = require("../middleware/adminLogger");
 
-// Controllers
+const { runDailyEarnings } = require("../cron/earningEngine");
+
+// =====================================================
+// CONTROLLERS
+// =====================================================
 const {
   getDashboardStats,
   getAllUsers,
@@ -27,6 +32,7 @@ const {
 // =====================================================
 router.get(
   "/dashboard",
+  authMiddleware,
   adminMiddleware,
   getDashboardStats
 );
@@ -38,6 +44,7 @@ router.get(
 // =====================================================
 router.get(
   "/users",
+  authMiddleware,
   adminMiddleware,
   getAllUsers
 );
@@ -49,6 +56,7 @@ router.get(
 // =====================================================
 router.get(
   "/user-risk/:userId",
+  authMiddleware,
   adminMiddleware,
   getUserRiskDetail
 );
@@ -60,6 +68,7 @@ router.get(
 // =====================================================
 router.get(
   "/user-activity/:userId",
+  authMiddleware,
   adminMiddleware,
   getUserActivityTimeline
 );
@@ -72,6 +81,7 @@ router.get(
 // =====================================================
 router.put(
   "/user/:userId/ban",
+  authMiddleware,
   adminMiddleware,
   adminLogger("TOGGLE_USER_BAN"),
   toggleUserBan
@@ -84,6 +94,7 @@ router.put(
 // =====================================================
 router.get(
   "/transactions",
+  authMiddleware,
   adminMiddleware,
   getAllTransactions
 );
@@ -95,6 +106,7 @@ router.get(
 // =====================================================
 router.get(
   "/banks",
+  authMiddleware,
   adminMiddleware,
   getAllBanks
 );
@@ -106,6 +118,7 @@ router.get(
 // =====================================================
 router.get(
   "/withdraws",
+  authMiddleware,
   adminMiddleware,
   getAllWithdraws
 );
@@ -118,21 +131,40 @@ router.get(
 // =====================================================
 router.put(
   "/withdraw/:id",
+  authMiddleware,
   adminMiddleware,
   adminLogger("UPDATE_WITHDRAW_STATUS"),
   updateWithdrawStatus
 );
 
-// ========================================
-// USER ACTIVITY TIMELINE (TEMP SAFE)
-// ========================================
-exports.getUserActivityTimeline = async (req, res) => {
-  try {
-    return res.json([]);
-  } catch (err) {
-    return res.status(500).json({ message: "Failed to load timeline" });
-  }
-};
 
+// =====================================================
+// MANUAL EARNING ENGINE TRIGGER (NEW)
+// POST /api/admin/run-earning-engine
+// =====================================================
+router.post(
+  "/run-earning-engine",
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+
+      await runDailyEarnings();
+
+      res.json({
+        success: true,
+        message: "Earning engine executed successfully"
+      });
+
+    } catch (error) {
+      console.error("Manual Engine Error:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to run earning engine"
+      });
+    }
+  }
+);
 
 module.exports = router;
