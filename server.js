@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const http = require("http");
+const path = require("path");
 const { Server } = require("socket.io");
 
 const connectDB = require("./config/db");
@@ -23,11 +24,11 @@ connectDB();
 const server = http.createServer(app);
 
 /* =====================================================
-   GLOBAL CORS (SIMPLE + STABLE)
+   GLOBAL CORS
 ===================================================== */
 app.use(
   cors({
-    origin: true, // 🔥 Allow all origins (JWT handles security)
+    origin: true,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
@@ -35,17 +36,37 @@ app.use(
 );
 
 /* =====================================================
-   SOCKET.IO SETUP (STABLE)
+   BASIC SECURITY (Helmet)
+   🔥 CSP DISABLED FOR DEV (Live Server on 5500)
+===================================================== */
+app.disable("x-powered-by");
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false
+  })
+);
+
+/* =====================================================
+   SERVE UPLOADS FOLDER
+===================================================== */
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"))
+);
+
+/* =====================================================
+   SOCKET.IO SETUP
 ===================================================== */
 const io = new Server(server, {
   cors: {
-    origin: true, // 🔥 Same as express
+    origin: true,
     credentials: true
   },
   transports: ["websocket", "polling"]
 });
 
-// Make io accessible in routes
+
 app.set("io", io);
 
 /* =====================================================
@@ -55,13 +76,13 @@ io.on("connection", (socket) => {
 
   console.log("🟢 Socket Connected:", socket.id);
 
-  // USER ROOM
+
   socket.on("join_user_room", (userId) => {
     if (!userId) return;
     socket.join(userId.toString());
   });
 
-  // ADMIN ROOM
+
   socket.on("join_admin_room", () => {
     socket.join("admin_room");
   });
@@ -71,11 +92,7 @@ io.on("connection", (socket) => {
   });
 });
 
-/* =====================================================
-   BASIC SECURITY
-===================================================== */
-app.disable("x-powered-by");
-app.use(helmet());
+
 
 /* =====================================================
    REQUEST LOGGER
@@ -101,6 +118,14 @@ app.get("/", (req, res) => {
     timestamp: new Date(),
   });
 });
+
+/* =====================================================
+   SERVE FRONTEND (IMPORTANT 🔥)
+===================================================== */
+
+app.use(
+  express.static(path.join(__dirname, "../philips"))
+);
 
 /* =====================================================
    API ROUTES

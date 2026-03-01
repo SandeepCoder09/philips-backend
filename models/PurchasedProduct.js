@@ -8,6 +8,15 @@ const purchasedProductSchema = new mongoose.Schema(
       index: true
     },
 
+    // 🔥 Link to original product
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+      index: true
+    },
+
+    // Snapshot fields (important if product changes later)
     name: {
       type: String,
       required: true
@@ -28,6 +37,12 @@ const purchasedProductSchema = new mongoose.Schema(
       default: Date.now
     },
 
+    // 🔥 Expiry date
+    endDate: {
+      type: Date,
+      required: true
+    },
+
     // 🔹 Total amount earned so far
     totalEarned: {
       type: Number,
@@ -40,13 +55,13 @@ const purchasedProductSchema = new mongoose.Schema(
       default: null
     },
 
-    // 🔹 Product active status (admin control)
+    // 🔹 Product active status (auto deactivate after expiry)
     isActive: {
       type: Boolean,
       default: true
     },
 
-    // 🔹 Optional: Maximum return limit (example: 2x)
+    // 🔹 Optional: Maximum return cap
     maxReturn: {
       type: Number,
       default: null
@@ -54,6 +69,9 @@ const purchasedProductSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// 🔥 Compound index for fast limit checks
+purchasedProductSchema.index({ userId: 1, productId: 1 });
 
 module.exports =
   mongoose.models.PurchasedProduct ||
