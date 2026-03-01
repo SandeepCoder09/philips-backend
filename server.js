@@ -43,7 +43,20 @@ app.disable("x-powered-by");
 
 app.use(
   helmet({
-    contentSecurityPolicy: false
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // 🔥 IMPORTANT
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: [
+          "'self'",
+          "data:",
+          "https://philips-backend.onrender.com",
+          "https://philipsfuturelighting24.vercel.app"
+        ],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: ["'self'", "'unsafe-inline'"]
+      }
+    }
   })
 );
 
