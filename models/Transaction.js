@@ -45,6 +45,7 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       enum: [
         "recharge",
+        "usdt_recharge",
         "withdraw",
         "purchase",
         "earning",

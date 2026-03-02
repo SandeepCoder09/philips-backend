@@ -125,6 +125,9 @@ router.post("/create-order", authMiddleware, async (req, res) => {
 /* =====================================================
    USDT MANUAL DEPOSIT (TRC20 ONLY)
 ===================================================== */
+/* =====================================================
+   USDT MANUAL DEPOSIT (TRC20 ONLY)
+===================================================== */
 router.post("/usdt-deposit", authMiddleware, async (req, res) => {
   try {
 
@@ -139,7 +142,7 @@ router.post("/usdt-deposit", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
-    // Prevent duplicate transaction hash
+    // 🔒 Prevent duplicate blockchain hash
     const existing = await UsdtDeposit.findOne({ txnHash });
     if (existing) {
       return res.status(400).json({ message: "Transaction hash already submitted" });
@@ -147,21 +150,21 @@ router.post("/usdt-deposit", authMiddleware, async (req, res) => {
 
     const depositId = generateTransactionId("usdt");
 
-    // Save USDT record (network hardcoded)
+    // ✅ Save USDT deposit record
     await UsdtDeposit.create({
       userId,
       depositId,
       amount: Number(amount),
-      network: "TRC20",   // ✅ FIXED HERE
+      network: "TRC20",
       txnHash,
       status: "pending"
     });
 
-    // Save transaction history
+    // ✅ Save transaction history using REAL HASH
     await Transaction.create({
       userId,
-      orderId: depositId,
-      type: "recharge",
+      orderId: txnHash, // 🔥 USE BLOCKCHAIN HASH
+      type: "usdt_recharge", // 🔥 SEPARATE TYPE
       amount: Number(amount),
       status: "pending",
       description: "USDT Deposit (TRC20)"
