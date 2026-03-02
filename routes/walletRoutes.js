@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const BankAccount = require("../models/BankAccount");
+const UsdtDeposit = require("../models/UsdtDeposit"); // ✅ ADDED
 
 const authMiddleware = require("../middleware/authMiddleware");
 
@@ -62,7 +63,7 @@ router.get("/banks", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   CREATE RECHARGE ORDER
+   CREATE RECHARGE ORDER (INR)
 ===================================================== */
 router.post("/create-order", authMiddleware, async (req, res) => {
   try {
@@ -122,7 +123,68 @@ router.post("/create-order", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   CASHFREE WEBHOOK (REAL-TIME ENABLED)
+   USDT MANUAL DEPOSIT (TRC20 ONLY)
+===================================================== */
+router.post("/usdt-deposit", authMiddleware, async (req, res) => {
+  try {
+
+    const { amount, txnHash } = req.body;
+    const userId = req.user.userId;
+
+    if (!amount || !txnHash) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (Number(amount) <= 0) {
+      return res.status(400).json({ message: "Invalid amount" });
+    }
+
+    // Prevent duplicate transaction hash
+    const existing = await UsdtDeposit.findOne({ txnHash });
+    if (existing) {
+      return res.status(400).json({ message: "Transaction hash already submitted" });
+    }
+
+    const depositId = generateTransactionId("usdt");
+
+    // Save USDT record (network hardcoded)
+    await UsdtDeposit.create({
+      userId,
+      depositId,
+      amount: Number(amount),
+      network: "TRC20",   // ✅ FIXED HERE
+      txnHash,
+      status: "pending"
+    });
+
+    // Save transaction history
+    await Transaction.create({
+      userId,
+      orderId: depositId,
+      type: "recharge",
+      amount: Number(amount),
+      status: "pending",
+      description: "USDT Deposit (TRC20)"
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("admin_room").emit("transaction_updated");
+    }
+
+    res.json({
+      message: "USDT deposit submitted. Waiting for admin approval.",
+      status: "pending"
+    });
+
+  } catch (error) {
+    console.error("USDT Deposit error:", error);
+    res.status(500).json({ message: "USDT deposit failed" });
+  }
+});
+
+/* =====================================================
+   CASHFREE WEBHOOK
 ===================================================== */
 router.post("/cashfree-webhook", async (req, res) => {
   try {
@@ -218,7 +280,7 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   WITHDRAW REQUEST (REAL-TIME ENABLED)
+   WITHDRAW REQUEST
 ===================================================== */
 router.post("/withdraw", authMiddleware, async (req, res) => {
   try {
