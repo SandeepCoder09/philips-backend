@@ -4,6 +4,9 @@ const router = express.Router();
 const adminMiddleware = require("../middleware/adminMiddleware");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminLogger = require("../middleware/adminLogger");
+const UsdtDeposit = require("../models/UsdtDeposit");
+const User = require("../models/User");
+const Transaction = require("../models/Transaction");
 
 const { runDailyEarnings } = require("../cron/earningEngine");
 
@@ -27,61 +30,20 @@ const {
 
 
 // =====================================================
-// DASHBOARD OVERVIEW
-// GET /api/admin/dashboard
+// DASHBOARD
 // =====================================================
-router.get(
-  "/dashboard",
-  authMiddleware,
-  adminMiddleware,
-  getDashboardStats
-);
+router.get("/dashboard", adminMiddleware, getDashboardStats);
 
 
 // =====================================================
-// USERS LIST
-// GET /api/admin/users
+// USERS
 // =====================================================
-router.get(
-  "/users",
-  authMiddleware,
-  adminMiddleware,
-  getAllUsers
-);
+router.get("/users", adminMiddleware, getAllUsers);
+router.get("/user-risk/:userId", adminMiddleware, getUserRiskDetail);
+router.get("/user-activity/:userId", adminMiddleware, getUserActivityTimeline);
 
-
-// =====================================================
-// ADVANCED USER RISK DETAIL
-// GET /api/admin/user-risk/:userId
-// =====================================================
-router.get(
-  "/user-risk/:userId",
-  authMiddleware,
-  adminMiddleware,
-  getUserRiskDetail
-);
-
-
-// =====================================================
-// USER ACTIVITY TIMELINE
-// GET /api/admin/user-activity/:userId
-// =====================================================
-router.get(
-  "/user-activity/:userId",
-  authMiddleware,
-  adminMiddleware,
-  getUserActivityTimeline
-);
-
-
-// =====================================================
-// BAN / UNBAN USER
-// PUT /api/admin/user/:userId/ban
-// body: { banned: true | false, reason?: string }
-// =====================================================
 router.put(
   "/user/:userId/ban",
-  authMiddleware,
   adminMiddleware,
   adminLogger("TOGGLE_USER_BAN"),
   toggleUserBan
@@ -89,49 +51,14 @@ router.put(
 
 
 // =====================================================
-// TRANSACTIONS
-// GET /api/admin/transactions
+// TRANSACTIONS / BANKS / WITHDRAWS
 // =====================================================
-router.get(
-  "/transactions",
-  authMiddleware,
-  adminMiddleware,
-  getAllTransactions
-);
+router.get("/transactions", adminMiddleware, getAllTransactions);
+router.get("/banks", adminMiddleware, getAllBanks);
+router.get("/withdraws", adminMiddleware, getAllWithdraws);
 
-
-// =====================================================
-// BANKS
-// GET /api/admin/banks
-// =====================================================
-router.get(
-  "/banks",
-  authMiddleware,
-  adminMiddleware,
-  getAllBanks
-);
-
-
-// =====================================================
-// WITHDRAW REQUESTS
-// GET /api/admin/withdraws
-// =====================================================
-router.get(
-  "/withdraws",
-  authMiddleware,
-  adminMiddleware,
-  getAllWithdraws
-);
-
-
-// =====================================================
-// UPDATE WITHDRAW STATUS
-// PUT /api/admin/withdraw/:id
-// body: { status: "under review" | "success" | "rejected" }
-// =====================================================
 router.put(
   "/withdraw/:id",
-  authMiddleware,
   adminMiddleware,
   adminLogger("UPDATE_WITHDRAW_STATUS"),
   updateWithdrawStatus
@@ -139,8 +66,154 @@ router.put(
 
 
 // =====================================================
-// MANUAL EARNING ENGINE TRIGGER (NEW)
-// POST /api/admin/run-earning-engine
+// INR RECHARGES
+// =====================================================
+router.get(
+  "/inr-recharges",
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+      const transactions = await Transaction.find({
+        type: "recharge",
+        description: { $not: /USDT/i }
+      }).sort({ createdAt: -1 });
+
+      res.json(transactions);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching INR recharges" });
+    }
+  }
+);
+
+
+// =====================================================
+// USDT RECHARGES
+// =====================================================
+router.get(
+  "/usdt-recharges",
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+      const transactions = await Transaction.find({
+        description: /USDT/i
+      }).sort({ createdAt: -1 });
+
+      res.json(transactions);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching USDT recharges" });
+    }
+  }
+);
+
+
+// =====================================================
+// ALL USDT DEPOSITS
+// =====================================================
+router.get("/usdt-deposits", adminMiddleware, async (req, res) => {
+  try {
+    const deposits = await UsdtDeposit.find().sort({ createdAt: -1 });
+    res.json(deposits);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching deposits" });
+  }
+});
+
+
+// =====================================================
+// USDT APPROVE (FIXED)
+// =====================================================
+router.post(
+  "/usdt-approve/:id",
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+
+      const deposit = await UsdtDeposit.findById(req.params.id);
+      if (!deposit) {
+        return res.status(404).json({ message: "Deposit not found" });
+      }
+
+      if (deposit.status !== "pending") {
+        return res.status(400).json({ message: "Already processed" });
+      }
+
+      deposit.status = "approved";
+      await deposit.save();
+
+      // ✅ FIXED: CREDIT USDT BALANCE (NOT walletBalance)
+      await User.findOneAndUpdate(
+        { userId: deposit.userId },
+        { $inc: { usdtBalance: deposit.amount } }
+      );
+
+      await Transaction.findOneAndUpdate(
+        { orderId: deposit.txnHash },
+        { status: "success" }
+      );
+
+      const io = req.app.get("io");
+      if (io) {
+        io.to(deposit.userId.toString()).emit("wallet_updated");
+        io.to("admin_room").emit("transaction_updated");
+      }
+
+      res.json({ message: "USDT deposit approved successfully" });
+
+    } catch (error) {
+      console.error("USDT Approve Error:", error);
+      res.status(500).json({ message: "Approval failed" });
+    }
+  }
+);
+
+
+// =====================================================
+// USDT REJECT
+// =====================================================
+router.post(
+  "/usdt-reject/:id",
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+
+      const deposit = await UsdtDeposit.findById(req.params.id);
+      if (!deposit) {
+        return res.status(404).json({ message: "Deposit not found" });
+      }
+
+      if (deposit.status !== "pending") {
+        return res.status(400).json({ message: "Already processed" });
+      }
+
+      deposit.status = "rejected";
+      await deposit.save();
+
+      await Transaction.findOneAndUpdate(
+        { orderId: deposit.txnHash },
+        { status: "failed" }
+      );
+
+      const io = req.app.get("io");
+      if (io) {
+        io.to("admin_room").emit("transaction_updated");
+      }
+
+      res.json({ message: "USDT deposit rejected successfully" });
+
+    } catch (error) {
+      console.error("USDT Reject Error:", error);
+      res.status(500).json({ message: "Rejection failed" });
+    }
+  }
+);
+
+
+// =====================================================
+// MANUAL EARNING ENGINE
 // =====================================================
 router.post(
   "/run-earning-engine",
@@ -148,7 +221,6 @@ router.post(
   adminMiddleware,
   async (req, res) => {
     try {
-
       await runDailyEarnings();
 
       res.json({

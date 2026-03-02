@@ -1,6 +1,5 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const processEarnings = require("../utils/processEarnings");
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -18,46 +17,55 @@ const authMiddleware = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    if (!decoded || !decoded.userId) {
+    if (!decoded) {
       return res.status(401).json({
         success: false,
-        message: "Invalid token payload"
+        message: "Invalid token"
       });
     }
 
-    // 🔥 Fetch user using numeric userId
-    const user = await User.findOne({ userId: decoded.userId });
+    // ✅ CASE 1: Normal User Token
+    if (decoded.userId) {
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found"
-      });
+      const user = await User.findOne({ userId: decoded.userId });
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      if (user.isBanned) {
+        return res.status(403).json({
+          success: false,
+          message: "Your account has been suspended"
+        });
+      }
+
+      req.user = {
+        _id: user._id,
+        userId: user.userId,
+        isAdmin: user.isAdmin || false
+      };
+
+      return next();
     }
 
-    // 🚫 BLOCK BANNED USERS
-    if (user.isBanned) {
-      return res.status(403).json({
-        success: false,
-        message: "Your account has been suspended"
-      });
+    // ✅ CASE 2: Admin Token
+    if (decoded.isAdmin) {
+
+      req.user = {
+        isAdmin: true
+      };
+
+      return next();
     }
 
-    // Attach full user object safely
-    req.user = {
-      _id: user._id,
-      userId: user.userId,
-      isAdmin: user.isAdmin || false
-    };
-
-    // 💰 Safe earning processor (optional)
-    // try {
-    //   await processEarnings(user.userId);
-    // } catch (earningError) {
-    //   console.error("Earning Engine Error:", earningError);
-    // }
-
-    next();
+    return res.status(401).json({
+      success: false,
+      message: "Invalid token payload"
+    });
 
   } catch (err) {
     console.error("Auth Middleware Error:", err);

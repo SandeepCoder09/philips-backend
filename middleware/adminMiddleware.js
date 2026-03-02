@@ -12,7 +12,16 @@ const adminMiddleware = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
+    if (!token) {
+      return res.status(401).json({ message: "Invalid token format" });
+    }
+
+    // ✅ Properly define decoded
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({ message: "Invalid token payload" });
+    }
 
     const user = await User.findById(decoded.id);
 
@@ -24,11 +33,11 @@ const adminMiddleware = async (req, res, next) => {
     next();
 
   } catch (error) {
-    return res.status(401).json({ message: "Invalid token" });
+    console.error("Admin Middleware Error:", error);
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 
-  console.log("Decoded ID:", decoded.id);
-  console.log("User Found:", user);
+  
 };
 
 module.exports = adminMiddleware;

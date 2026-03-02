@@ -106,6 +106,18 @@ const userSchema = new mongoose.Schema(
       default: null
     },
 
+    // USDT Balance Convert
+    usdtBalance: {
+      type: Number,
+      default: 0
+    },
+
+    walletBalance: {
+      type: Number,
+      default: 0
+    },
+
+
     /* ================= ROLE ================= */
 
     isAdmin: {

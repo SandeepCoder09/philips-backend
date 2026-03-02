@@ -151,6 +151,7 @@ app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/products", require("./routes/products"));
 app.use("/api/webhook", require("./routes/webhookRoutes"));
 app.use("/api/gift", require("./routes/gift"));
+app.use("/api/usdt", require("./routes/usdtRoutes"));
 
 /* =====================================================
    404 HANDLER
