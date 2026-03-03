@@ -158,7 +158,6 @@ app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/referral", require("./routes/referralRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/products", require("./routes/products"));
-app.use("/api/webhook", require("./routes/webhookRoutes"));
 app.use("/api/gift", require("./routes/gift"));
 app.use("/api/wallet", require("./routes/walletRoutes"));
 app.use("/api/usdt", require("./routes/usdtRoutes"));
