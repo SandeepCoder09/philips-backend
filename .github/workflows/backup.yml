@@ -10,10 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install MongoDB Tools
+      - name: Download MongoDB Database Tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mongodb-database-tools
+          curl -LO https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-x86_64-100.9.4.tgz
+          tar -xzf mongodb-database-tools-ubuntu2204-x86_64-100.9.4.tgz
+          sudo mv mongodb-database-tools-*/bin/* /usr/local/bin/
 
       - name: Run mongodump
         run: |
