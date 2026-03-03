@@ -36,7 +36,7 @@ router.post("/cashfree", async (req, res) => {
     const expectedSignature = crypto
       .createHmac("sha256", secretKey)
       .update(rawBody)
-      .digest("base64");
+      .digest("hex");
 
     if (signature !== expectedSignature) {
       console.log("❌ Invalid webhook signature");
