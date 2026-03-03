@@ -5,12 +5,12 @@ const router = express.Router();
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 
-router.post("/", async (req, res) => {
+router.post("/cashfree", async (req, res) => {
   try {
     console.log("🔥 Cashfree webhook received");
 
     const secretKey = process.env.CASHFREE_SECRET_KEY;
-    const signature = req.headers["x-cashfree-signature"];
+    const signature = req.headers["x-webhook-signature"];
     const timestamp = req.headers["x-webhook-timestamp"];
     const rawBody = req.body;
 
