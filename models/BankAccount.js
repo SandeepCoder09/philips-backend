@@ -5,19 +5,27 @@ const bankAccountSchema = new mongoose.Schema(
     userId: {
       type: Number,
       required: true,
+      unique: true,
       index: true
     },
 
     accountNumber: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
+      validate: {
+        validator: function (value) {
+          return /^\d{9,18}$/.test(value);
+        },
+        message: "Account number must contain only digits (9-18 numbers)"
+      }
     },
 
     ifsc: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
+      uppercase: true
     },
 
     holderName: {
@@ -30,16 +38,18 @@ const bankAccountSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "verified", "rejected"],
+      default: "pending"
     }
   },
   { timestamps: true }
 );
 
-/* 🔐 Prevent duplicate same bank for same user */
-bankAccountSchema.index(
-  { userId: 1, accountNumber: 1 },
-  { unique: true }
-);
+bankAccountSchema.index({ userId: 1 }, { unique: true });
 
 module.exports =
   mongoose.models.BankAccount ||

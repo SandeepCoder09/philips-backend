@@ -28,35 +28,69 @@ const withdrawLimiter = rateLimit({
 });
 
 /* =====================================================
-   BIND BANK ACCOUNT
+   BIND BANK ACCOUNT (SINGLE BANK ONLY)
 ===================================================== */
 router.post("/bind-bank", authMiddleware, async (req, res) => {
   try {
     const { accountNumber, ifsc, holderName, bankName } = req.body;
     const userId = req.user.userId;
 
+    /* ===============================
+       1️⃣ Basic Validation
+    =============================== */
     if (!accountNumber || !ifsc || !holderName || !bankName) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({
+        message: "All fields are required"
+      });
     }
 
-    const existing = await BankAccount.findOne({ userId, accountNumber });
-    if (existing) {
-      return res.status(400).json({ message: "Bank already linked" });
+    /* ===============================
+       2️⃣ Strict Format Validation
+    =============================== */
+    if (!/^\d{9,18}$/.test(accountNumber)) {
+      return res.status(400).json({
+        message: "Invalid account number"
+      });
     }
 
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) {
+      return res.status(400).json({
+        message: "Invalid IFSC code"
+      });
+    }
+
+    /* ===============================
+       3️⃣ Check If User Already Has Bank
+    =============================== */
+    const existingBank = await BankAccount.findOne({ userId });
+
+    if (existingBank) {
+      return res.status(400).json({
+        message: "Bank already linked. You cannot add another."
+      });
+    }
+
+    /* ===============================
+       4️⃣ Create Bank Record
+    =============================== */
     await BankAccount.create({
       userId,
       accountNumber,
-      ifsc,
+      ifsc: ifsc.toUpperCase(),
       holderName,
-      bankName
+      bankName,
+      verificationStatus: "pending" // future-ready
     });
 
-    res.status(201).json({ message: "Bank linked successfully" });
+    return res.status(201).json({
+      message: "Bank linked successfully"
+    });
 
   } catch (error) {
     console.error("Bind bank error:", error);
-    res.status(500).json({ message: "Failed to bind bank" });
+    return res.status(500).json({
+      message: "Failed to bind bank"
+    });
   }
 });
 
