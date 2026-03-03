@@ -70,9 +70,9 @@ router.post("/create-order", authMiddleware, async (req, res) => {
     const { amount } = req.body;
     const userId = req.user.userId;
 
-    if (!amount || amount < 10) {
-      return res.status(400).json({ message: "Minimum recharge is ₹10" });
-    }
+    // if (!amount || amount < 1) {
+    //   return res.status(400).json({ message: "Minimum recharge is ₹1" });
+    // }
 
     const user = await User.findOne({ userId });
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -283,31 +283,78 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   WITHDRAW REQUEST
+   SECURE WITHDRAW REQUEST (HARDENED)
 ===================================================== */
 router.post("/withdraw", authMiddleware, async (req, res) => {
   try {
-    const { amount, pin } = req.body;
+
+    const amount = Number(req.body.amount);
+    const pin = String(req.body.pin || "");
     const userId = req.user.userId;
 
-    if (!amount || amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
+    }
+
+    if (pin.length !== 4) {
+      return res.status(400).json({ message: "Invalid PIN format" });
     }
 
     const user = await User.findOne({ userId });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const isMatch = await bcrypt.compare(pin, user.withdrawPin);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid Withdraw PIN" });
+    if (user.isFrozen) {
+      return res.status(403).json({ message: "Account is frozen" });
     }
 
-    if (user.walletBalance < amount) {
+    // 🔒 Check if PIN locked
+    if (
+      user.withdrawPinLockedUntil &&
+      user.withdrawPinLockedUntil > new Date()
+    ) {
+      return res.status(403).json({
+        message: "Too many wrong PIN attempts. Try again later."
+      });
+    }
+
+    const isMatch = await bcrypt.compare(pin, user.withdrawPin);
+
+    if (!isMatch) {
+
+      user.withdrawPinAttempts += 1;
+
+      // Lock after 5 wrong attempts
+      if (user.withdrawPinAttempts >= 5) {
+        user.withdrawPinLockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+        user.withdrawPinAttempts = 0;
+      }
+
+      await user.save();
+
+      return res.status(400).json({
+        message: "Invalid Withdraw PIN"
+      });
+    }
+
+    // ✅ Reset attempts on success
+    user.withdrawPinAttempts = 0;
+    user.withdrawPinLockedUntil = null;
+    await user.save();
+
+    // 🔥 Atomic deduction
+    const updateResult = await User.updateOne(
+      {
+        _id: user._id,
+        walletBalance: { $gte: amount }
+      },
+      {
+        $inc: { walletBalance: -amount }
+      }
+    );
+
+    if (updateResult.modifiedCount === 0) {
       return res.status(400).json({ message: "Insufficient balance" });
     }
-
-    user.walletBalance -= amount;
-    await user.save();
 
     const withdrawId = generateTransactionId("withdraw");
 
@@ -328,8 +375,7 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
 
     res.json({
       message: "Withdrawal request submitted",
-      status: "processing",
-      newBalance: user.walletBalance
+      status: "processing"
     });
 
   } catch (error) {

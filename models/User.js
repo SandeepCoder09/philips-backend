@@ -31,6 +31,11 @@ const userSchema = new mongoose.Schema(
       required: true
     },
 
+    isFrozen: {
+      type: Boolean,
+      default: false
+    },
+
     isBanned: {
       type: Boolean,
       default: false
@@ -103,6 +108,16 @@ const userSchema = new mongoose.Schema(
 
     withdrawPin: {
       type: String,
+      default: null
+    },
+
+    // Withdraw Attempt and Lock
+    withdrawPinAttempts: {
+      type: Number,
+      default: 0
+    },
+    withdrawPinLockedUntil: {
+      type: Date,
       default: null
     },
 

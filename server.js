@@ -1,3 +1,4 @@
+const rateLimit = require("express-rate-limit");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -8,6 +9,7 @@ const path = require("path");
 const { Server } = require("socket.io");
 
 const connectDB = require("./config/db");
+
 
 dotenv.config();
 
@@ -141,17 +143,32 @@ app.use(
 );
 
 /* =====================================================
+   FINANCIAL RATE LIMITER
+===================================================== */
+
+const financialLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // Max 5 financial requests per minute
+  message: {
+    success: false,
+    message: "Too many financial attempts. Please wait 1 minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/* =====================================================
    API ROUTES
 ===================================================== */
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/referral", require("./routes/referralRoutes"));
-app.use("/api/wallet", require("./routes/walletRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/products", require("./routes/products"));
 app.use("/api/webhook", require("./routes/webhookRoutes"));
 app.use("/api/gift", require("./routes/gift"));
-app.use("/api/usdt", require("./routes/usdtRoutes"));
+app.use("/api/wallet", financialLimiter, require("./routes/walletRoutes"));
+app.use("/api/usdt", financialLimiter, require("./routes/usdtRoutes"));
 
 /* =====================================================
    404 HANDLER
