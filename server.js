@@ -118,10 +118,12 @@ if (process.env.NODE_ENV !== "production") {
 /* =====================================================
    CASHFREE WEBHOOK (RAW BODY FIRST)
 ===================================================== */
-app.post(
-  "/api/webhook/cashfree",
+const webhookRoutes = require("./routes/webhookRoutes");
+
+app.use(
+  "/api/webhook",
   express.raw({ type: "application/json" }),
-  require("./routes/webhookRoutes")
+  webhookRoutes
 );
 
 /* =====================================================
