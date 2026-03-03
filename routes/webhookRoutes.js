@@ -18,24 +18,21 @@ router.post("/cashfree", async (req, res) => {
     ===================================================== */
 
     const signature = req.headers["x-cashfree-signature"];
+    const timestamp = req.headers["x-webhook-timestamp"];
     const secretKey = process.env.CASHFREE_SECRET_KEY;
 
-    if (!secretKey) {
-      console.error("❌ CASHFREE_SECRET_KEY missing in environment");
-      return res.status(500).json({ message: "Server configuration error" });
+    if (!signature || !timestamp) {
+      return res.status(401).json({ message: "Missing signature headers" });
     }
 
-    if (!signature) {
-      console.log("❌ Missing webhook signature");
-      return res.status(401).json({ message: "Missing signature" });
-    }
-
-    // Because express.raw() is used
     const rawBody = req.body;
+
+    // 🔥 IMPORTANT: timestamp + rawBody
+    const signedPayload = timestamp + rawBody.toString();
 
     const expectedSignature = crypto
       .createHmac("sha256", secretKey)
-      .update(rawBody)
+      .update(signedPayload)
       .digest("hex");
 
     if (signature !== expectedSignature) {
