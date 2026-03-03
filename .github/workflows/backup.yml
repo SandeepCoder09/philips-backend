@@ -1,0 +1,27 @@
+name: Daily Mongo Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install MongoDB Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mongodb-database-tools
+
+      - name: Run mongodump
+        run: |
+          mongodump --uri="${{ secrets.MONGO_BACKUP_URI }}" \
+          --archive=backup.gz --gzip
+
+      - name: Upload Backup Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mongo-backup
+          path: backup.gz
