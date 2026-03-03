@@ -31,7 +31,7 @@ router.post("/cashfree", async (req, res) => {
     const expectedSignature = crypto
       .createHmac("sha256", secretKey)
       .update(signedPayload)
-      .digest("hex");
+      .digest("base64");
 
     if (signature !== expectedSignature) {
       console.log("❌ Invalid signature (ignored)");
