@@ -6,16 +6,18 @@ const bcrypt = require("bcryptjs");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const BankAccount = require("../models/BankAccount");
-const UsdtDeposit = require("../models/UsdtDeposit"); // ✅ ADDED
+const UsdtDeposit = require("../models/UsdtDeposit");
 
 const authMiddleware = require("../middleware/authMiddleware");
-
 const generateTransactionId = require("../utils/generateTransactionId");
 
 const rateLimit = require("express-rate-limit");
 
+/* =====================================================
+   RATE LIMITER (WITHDRAW)
+===================================================== */
 const withdrawLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000,
   max: 5,
   message: {
     success: false,
@@ -76,16 +78,16 @@ router.get("/banks", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   CREATE RECHARGE ORDER (INR)
+   CREATE RECHARGE ORDER (INR - CASHFREE)
 ===================================================== */
 router.post("/create-order", authMiddleware, async (req, res) => {
   try {
     const { amount } = req.body;
     const userId = req.user.userId;
 
-    // if (!amount || amount < 1) {
-    //   return res.status(400).json({ message: "Minimum recharge is ₹1" });
-    // }
+    if (!amount || amount < 1) {
+      return res.status(400).json({ message: "Minimum recharge is ₹1" });
+    }
 
     const user = await User.findOne({ userId });
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -93,7 +95,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
     const orderId = generateTransactionId("recharge");
 
     const orderRequest = {
-      order_amount: amount,
+      order_amount: Number(amount),
       order_currency: "INR",
       order_id: orderId,
       customer_details: {
@@ -119,7 +121,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
       userId,
       orderId,
       type: "recharge",
-      amount,
+      amount: Number(amount),
       status: "pending",
       description: "Wallet Recharge"
     });
@@ -136,14 +138,10 @@ router.post("/create-order", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   USDT MANUAL DEPOSIT (TRC20 ONLY)
-===================================================== */
-/* =====================================================
-   USDT MANUAL DEPOSIT (TRC20 ONLY)
+   USDT MANUAL DEPOSIT
 ===================================================== */
 router.post("/usdt-deposit", authMiddleware, async (req, res) => {
   try {
-
     const { amount, txnHash } = req.body;
     const userId = req.user.userId;
 
@@ -151,42 +149,28 @@ router.post("/usdt-deposit", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    if (Number(amount) <= 0) {
-      return res.status(400).json({ message: "Invalid amount" });
-    }
-
-    // 🔒 Prevent duplicate blockchain hash
     const existing = await UsdtDeposit.findOne({ txnHash });
     if (existing) {
       return res.status(400).json({ message: "Transaction hash already submitted" });
     }
 
-    const depositId = generateTransactionId("usdt");
-
-    // ✅ Save USDT deposit record
     await UsdtDeposit.create({
       userId,
-      depositId,
+      depositId: generateTransactionId("usdt"),
       amount: Number(amount),
       network: "TRC20",
       txnHash,
       status: "pending"
     });
 
-    // ✅ Save transaction history using REAL HASH
     await Transaction.create({
       userId,
-      orderId: txnHash, // 🔥 USE BLOCKCHAIN HASH
-      type: "usdt_recharge", // 🔥 SEPARATE TYPE
+      orderId: txnHash,
+      type: "usdt_recharge",
       amount: Number(amount),
       status: "pending",
       description: "USDT Deposit (TRC20)"
     });
-
-    const io = req.app.get("io");
-    if (io) {
-      io.to("admin_room").emit("transaction_updated");
-    }
 
     res.json({
       message: "USDT deposit submitted. Waiting for admin approval.",
@@ -200,55 +184,6 @@ router.post("/usdt-deposit", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   CASHFREE WEBHOOK
-===================================================== */
-router.post("/cashfree-webhook", async (req, res) => {
-  try {
-
-    const { order_id, order_status } = req.body;
-
-    const transaction = await Transaction.findOne({ orderId: order_id });
-    if (!transaction) return res.sendStatus(404);
-
-    if (transaction.status === "success") {
-      return res.sendStatus(200);
-    }
-
-    const io = req.app.get("io");
-
-    if (order_status === "PAID") {
-
-      transaction.status = "success";
-      await transaction.save();
-
-      await User.findOneAndUpdate(
-        { userId: transaction.userId },
-        { $inc: { walletBalance: transaction.amount } }
-      );
-
-      if (io) {
-        io.to("admin_room").emit("transaction_updated");
-      }
-    }
-
-    if (order_status === "FAILED") {
-      transaction.status = "failed";
-      await transaction.save();
-
-      if (io) {
-        io.to("admin_room").emit("transaction_updated");
-      }
-    }
-
-    res.sendStatus(200);
-
-  } catch (error) {
-    console.error("Webhook error:", error);
-    res.sendStatus(500);
-  }
-});
-
-/* =====================================================
    GET WALLET BALANCE
 ===================================================== */
 router.get("/balance", authMiddleware, async (req, res) => {
@@ -257,11 +192,7 @@ router.get("/balance", authMiddleware, async (req, res) => {
       userId: req.user.userId
     }).select("walletBalance");
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    res.json({ balance: user.walletBalance || 0 });
+    res.json({ balance: user?.walletBalance || 0 });
 
   } catch (error) {
     res.status(500).json({ message: "Error fetching balance" });
@@ -296,14 +227,13 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   SECURE WITHDRAW REQUEST (HARDENED)
+   SECURE WITHDRAW
 ===================================================== */
 router.post("/withdraw",
   withdrawLimiter,
   authMiddleware,
   async (req, res) => {
     try {
-
       const amount = Number(req.body.amount);
       const pin = String(req.body.pin || "");
       const userId = req.user.userId;
@@ -319,75 +249,28 @@ router.post("/withdraw",
       const user = await User.findOne({ userId });
       if (!user) return res.status(404).json({ message: "User not found" });
 
-      if (user.isFrozen) {
-        return res.status(403).json({ message: "Account is frozen" });
-      }
-
-      // 🔒 Check if PIN locked
-      if (
-        user.withdrawPinLockedUntil &&
-        user.withdrawPinLockedUntil > new Date()
-      ) {
-        return res.status(403).json({
-          message: "Too many wrong PIN attempts. Try again later."
-        });
-      }
-
       const isMatch = await bcrypt.compare(pin, user.withdrawPin);
-
       if (!isMatch) {
-
-        user.withdrawPinAttempts += 1;
-
-        // Lock after 5 wrong attempts
-        if (user.withdrawPinAttempts >= 5) {
-          user.withdrawPinLockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-          user.withdrawPinAttempts = 0;
-        }
-
-        await user.save();
-
-        return res.status(400).json({
-          message: "Invalid Withdraw PIN"
-        });
+        return res.status(400).json({ message: "Invalid Withdraw PIN" });
       }
 
-      // ✅ Reset attempts on success
-      user.withdrawPinAttempts = 0;
-      user.withdrawPinLockedUntil = null;
-      await user.save();
-
-      // 🔥 Atomic deduction
       const updateResult = await User.updateOne(
-        {
-          _id: user._id,
-          walletBalance: { $gte: amount }
-        },
-        {
-          $inc: { walletBalance: -amount }
-        }
+        { _id: user._id, walletBalance: { $gte: amount } },
+        { $inc: { walletBalance: -amount } }
       );
 
       if (updateResult.modifiedCount === 0) {
         return res.status(400).json({ message: "Insufficient balance" });
       }
 
-      const withdrawId = generateTransactionId("withdraw");
-
       await Transaction.create({
         userId,
-        orderId: withdrawId,
+        orderId: generateTransactionId("withdraw"),
         type: "withdraw",
         amount,
         status: "processing",
         description: "Withdrawal Request"
       });
-
-      const io = req.app.get("io");
-      if (io) {
-        io.to("admin_room").emit("withdraw_updated");
-        io.to("admin_room").emit("transaction_updated");
-      }
 
       res.json({
         message: "Withdrawal request submitted",
