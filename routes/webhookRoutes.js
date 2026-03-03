@@ -17,7 +17,7 @@ router.post("/cashfree", async (req, res) => {
        1️⃣ Verify Signature
     ===================================================== */
 
-    const signature = req.headers["x-webhook-signature"];
+    const signature = req.headers["x-cashfree-signature"];
     const secretKey = process.env.CASHFREE_SECRET_KEY;
 
     if (!secretKey) {
