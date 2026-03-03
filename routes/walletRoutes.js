@@ -230,9 +230,10 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 });
 
 /* =====================================================
-   SECURE WITHDRAW
+   SECURE WITHDRAW (STABLE - TRANSACTION BASED)
 ===================================================== */
-router.post("/withdraw",
+router.post(
+  "/withdraw",
   withdrawLimiter,
   authMiddleware,
   async (req, res) => {
@@ -241,22 +242,71 @@ router.post("/withdraw",
       const pin = String(req.body.pin || "");
       const userId = req.user.userId;
 
+      /* ===============================
+   1️⃣ Validate Amount
+=============================== */
       if (!Number.isFinite(amount) || amount <= 0) {
         return res.status(400).json({ message: "Invalid amount" });
       }
 
+      // 💰 Minimum & Maximum Limit
+      const MIN_WITHDRAW = 120;
+      const MAX_WITHDRAW = 50000;
+
+      if (amount < MIN_WITHDRAW) {
+        return res.status(400).json({
+          message: `Minimum withdraw is ₹${MIN_WITHDRAW}`
+        });
+      }
+
+      if (amount > MAX_WITHDRAW) {
+        return res.status(400).json({
+          message: `Maximum withdraw is ₹${MAX_WITHDRAW}`
+        });
+      }
+
+      /* ===============================
+         2️⃣ Validate PIN Format
+      =============================== */
       if (pin.length !== 4) {
         return res.status(400).json({ message: "Invalid PIN format" });
       }
 
+      /* ===============================
+         3️⃣ Get User
+      =============================== */
       const user = await User.findOne({ userId });
-      if (!user) return res.status(404).json({ message: "User not found" });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
 
+      /* ===============================
+         4️⃣ Verify PIN
+      =============================== */
       const isMatch = await bcrypt.compare(pin, user.withdrawPin);
       if (!isMatch) {
         return res.status(400).json({ message: "Invalid Withdraw PIN" });
       }
 
+      /* ===============================
+         5️⃣ 🔒 Check Pending Withdraw
+         (Using Transaction Model)
+      =============================== */
+      const existingPending = await Transaction.findOne({
+        userId,
+        type: "withdraw",
+        status: { $in: ["processing", "under review"] }
+      });
+
+      if (existingPending) {
+        return res.status(400).json({
+          message: "You already have a pending withdraw request"
+        });
+      }
+
+      /* ===============================
+         6️⃣ Deduct Balance (Atomic)
+      =============================== */
       const updateResult = await User.updateOne(
         { _id: user._id, walletBalance: { $gte: amount } },
         { $inc: { walletBalance: -amount } }
@@ -266,24 +316,33 @@ router.post("/withdraw",
         return res.status(400).json({ message: "Insufficient balance" });
       }
 
+      /* ===============================
+         7️⃣ Create Transaction Record
+      =============================== */
+      const orderId = generateTransactionId("withdraw");
+
       await Transaction.create({
         userId,
-        orderId: generateTransactionId("withdraw"),
+        orderId,
         type: "withdraw",
         amount,
         status: "processing",
         description: "Withdrawal Request"
       });
 
-      res.json({
-        message: "Withdrawal request submitted",
+      /* ===============================
+         8️⃣ Success Response
+      =============================== */
+      return res.json({
+        message: "Withdrawal request submitted successfully",
         status: "processing"
       });
 
     } catch (error) {
       console.error("Withdraw error:", error);
-      res.status(500).json({ message: "Withdraw failed" });
+      return res.status(500).json({ message: "Withdraw failed" });
     }
-  });
+  }
+);
 
 module.exports = router;

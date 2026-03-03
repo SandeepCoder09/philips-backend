@@ -15,7 +15,7 @@ dotenv.config();
 const app = express();
 
 /* =====================================================
-   CONNECT DATABASE
+   CONNECT DATA
 ===================================================== */
 connectDB();
 

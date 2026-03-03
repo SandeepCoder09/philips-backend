@@ -326,19 +326,12 @@ exports.getAllWithdraws = async (req, res) => {
 };
 
 
-
 // =====================================================
-// UPDATE WITHDRAW STATUS (REAL-TIME SAFE)
+// UPDATE WITHDRAW STATUS (STRICT + SAFE)
 // =====================================================
 exports.updateWithdrawStatus = async (req, res) => {
   try {
-
     const { status } = req.body;
-
-    const allowed = ["under review", "success", "rejected"];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
-    }
 
     const transaction = await Transaction.findById(req.params.id);
 
@@ -346,12 +339,28 @@ exports.updateWithdrawStatus = async (req, res) => {
       return res.status(404).json({ message: "Withdraw not found" });
     }
 
-    if (["success", "rejected"].includes(transaction.status)) {
+    const currentStatus = transaction.status;
+
+    // 🔒 Final state protection
+    if (["success", "rejected"].includes(currentStatus)) {
       return res.status(400).json({
         message: "Withdraw already finalized"
       });
     }
 
+    // 🔐 Strict allowed transitions
+    const transitions = {
+      processing: ["under review", "rejected"],
+      "under review": ["success", "rejected"]
+    };
+
+    if (!transitions[currentStatus]?.includes(status)) {
+      return res.status(400).json({
+        message: `Invalid state transition from ${currentStatus} to ${status}`
+      });
+    }
+
+    // 💰 Refund only when rejecting (and not already rejected)
     if (status === "rejected") {
       await User.findOneAndUpdate(
         { userId: transaction.userId },
@@ -359,13 +368,15 @@ exports.updateWithdrawStatus = async (req, res) => {
       );
     }
 
+    // ✅ Update status
     transaction.status = status;
 
+    // 📝 Audit log
     transaction.auditLog.push({
       action: status,
       adminId: req.user._id,
       ip: req.ip,
-      createdAt: new Date()
+      timestamp: new Date()
     });
 
     await transaction.save();
