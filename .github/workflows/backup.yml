@@ -16,15 +16,13 @@ jobs:
           tar -xzf mongodb-database-tools-ubuntu2204-x86_64-100.9.4.tgz
           sudo mv mongodb-database-tools-*/bin/* /usr/local/bin/
 
-          
-          
-          - name: Run mongodump (Full Cluster Backup)
-             run: |
-             mongodump \
-               --uri="${{ secrets.MONGO_BACKUP_URI }}" \
-                  --archive=backup.gz \
-                    --gzip
-  
+      - name: Run mongodump (Full Cluster Backup)
+        run: |
+          mongodump \
+            --uri="${{ secrets.MONGO_BACKUP_URI }}" \
+            --archive=backup.gz \
+            --gzip
+
       - name: Upload Backup Artifact
         uses: actions/upload-artifact@v4
         with:
