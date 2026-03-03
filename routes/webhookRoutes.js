@@ -5,7 +5,7 @@ const router = express.Router();
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 
-router.post("/cashfree", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     console.log("🔥 Cashfree webhook received");
 
