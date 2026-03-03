@@ -1,4 +1,3 @@
-const rateLimit = require("express-rate-limit");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -117,7 +116,16 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 /* =====================================================
-   BODY PARSERS
+   CASHFREE WEBHOOK (RAW BODY FIRST)
+===================================================== */
+app.post(
+  "/api/webhook/cashfree",
+  express.raw({ type: "application/json" }),
+  require("./routes/webhookRoutes")
+);
+
+/* =====================================================
+   BODY PARSERS (AFTER WEBHOOK)
 ===================================================== */
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -143,21 +151,6 @@ app.use(
 );
 
 /* =====================================================
-   FINANCIAL RATE LIMITER
-===================================================== */
-
-const financialLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 5, // Max 5 financial requests per minute
-  message: {
-    success: false,
-    message: "Too many financial attempts. Please wait 1 minute."
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-/* =====================================================
    API ROUTES
 ===================================================== */
 app.use("/api/auth", require("./routes/authRoutes"));
@@ -167,8 +160,8 @@ app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/products", require("./routes/products"));
 app.use("/api/webhook", require("./routes/webhookRoutes"));
 app.use("/api/gift", require("./routes/gift"));
-app.use("/api/wallet", financialLimiter, require("./routes/walletRoutes"));
-app.use("/api/usdt", financialLimiter, require("./routes/usdtRoutes"));
+app.use("/api/wallet", require("./routes/walletRoutes"));
+app.use("/api/usdt", require("./routes/usdtRoutes"));
 
 /* =====================================================
    404 HANDLER

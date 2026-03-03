@@ -1,71 +1,116 @@
 const express = require("express");
+const crypto = require("crypto");
 const router = express.Router();
 
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 
 /* =====================================================
-   CASHFREE WEBHOOK
+   CASHFREE WEBHOOK (PG v2 - 2023-08-01)
+   MUST BE USED WITH express.raw()
 ===================================================== */
 router.post("/cashfree", async (req, res) => {
   try {
-    console.log("🔥 Webhook hit");
-    console.log("📦 Incoming Payload:", JSON.stringify(req.body));
+    console.log("🔥 Cashfree webhook received");
 
-    const body = req.body;
+    /* =====================================================
+       1️⃣ Verify Signature
+    ===================================================== */
 
-    // Validate payload structure
+    const signature = req.headers["x-webhook-signature"];
+    const secretKey = process.env.CASHFREE_SECRET_KEY;
+
+    if (!secretKey) {
+      console.error("❌ CASHFREE_SECRET_KEY missing in environment");
+      return res.status(500).json({ message: "Server configuration error" });
+    }
+
+    if (!signature) {
+      console.log("❌ Missing webhook signature");
+      return res.status(401).json({ message: "Missing signature" });
+    }
+
+    // Because express.raw() is used
+    const rawBody = req.body;
+
+    const expectedSignature = crypto
+      .createHmac("sha256", secretKey)
+      .update(rawBody)
+      .digest("base64");
+
+    if (signature !== expectedSignature) {
+      console.log("❌ Invalid webhook signature");
+      return res.status(401).json({ message: "Invalid signature" });
+    }
+
+    console.log("✅ Signature verified");
+
+    /* =====================================================
+       2️⃣ Parse Payload
+    ===================================================== */
+
+    const body = JSON.parse(rawBody.toString());
+
     if (!body?.data?.order || !body?.data?.payment) {
       console.log("❌ Invalid payload structure");
       return res.status(200).json({ message: "Invalid payload" });
     }
 
-    const order_id = body.data.order.order_id;
-    const order_amount = body.data.order.order_amount;
-    const payment_status = body.data.payment.payment_status;
+    const orderId = body.data.order.order_id;
+    const orderAmount = Number(body.data.order.order_amount);
+    const paymentStatus = body.data.payment.payment_status;
 
-    console.log("Order ID:", order_id);
-    console.log("Payment Status:", payment_status);
-    console.log("Order Amount:", order_amount);
+    console.log("Order:", orderId);
+    console.log("Status:", paymentStatus);
 
-    // Only process SUCCESS payments
-    if (payment_status !== "SUCCESS") {
-      console.log("ℹ️ Payment not successful, ignoring");
+    /* =====================================================
+       3️⃣ Process Only SUCCESS Payments
+    ===================================================== */
+
+    if (paymentStatus !== "SUCCESS") {
+      console.log("ℹ️ Payment not successful — ignored");
       return res.status(200).json({ message: "Ignored" });
     }
 
-    // Find transaction
-    const transaction = await Transaction.findOne({ orderId: order_id });
+    /* =====================================================
+       4️⃣ Find Transaction
+    ===================================================== */
+
+    const transaction = await Transaction.findOne({ orderId: orderId });
 
     if (!transaction) {
       console.log("❌ Transaction not found");
       return res.status(200).json({ message: "Transaction not found" });
     }
 
-    // Prevent double credit
     if (transaction.status === "success") {
       console.log("⚠️ Already processed");
       return res.status(200).json({ message: "Already processed" });
     }
 
-    // Update transaction status
+    /* =====================================================
+       5️⃣ Update Transaction
+    ===================================================== */
+
     transaction.status = "success";
     await transaction.save();
 
-    // ✅ FIXED: Update using numeric userId
+    /* =====================================================
+       6️⃣ Credit Wallet
+    ===================================================== */
+
     const updatedUser = await User.findOneAndUpdate(
       { userId: transaction.userId },
-      { $inc: { walletBalance: Number(order_amount) } },
+      { $inc: { walletBalance: orderAmount } },
       { new: true }
     );
 
     if (!updatedUser) {
-      console.log("❌ User not found for wallet credit");
+      console.log("❌ User not found");
       return res.status(200).json({ message: "User not found" });
     }
 
-    console.log("✅ Wallet credited successfully");
-    console.log("💰 New Wallet Balance:", updatedUser.walletBalance);
+    console.log("💰 Wallet credited:", updatedUser.walletBalance);
 
     return res.status(200).json({ message: "Success" });
 

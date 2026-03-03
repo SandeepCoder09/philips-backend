@@ -12,6 +12,19 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 const generateTransactionId = require("../utils/generateTransactionId");
 
+const rateLimit = require("express-rate-limit");
+
+const withdrawLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5,
+  message: {
+    success: false,
+    message: "Too many financial attempts. Please wait 1 minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 /* =====================================================
    BIND BANK ACCOUNT
 ===================================================== */
@@ -285,103 +298,106 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 /* =====================================================
    SECURE WITHDRAW REQUEST (HARDENED)
 ===================================================== */
-router.post("/withdraw", authMiddleware, async (req, res) => {
-  try {
+router.post("/withdraw",
+  withdrawLimiter,
+  authMiddleware,
+  async (req, res) => {
+    try {
 
-    const amount = Number(req.body.amount);
-    const pin = String(req.body.pin || "");
-    const userId = req.user.userId;
+      const amount = Number(req.body.amount);
+      const pin = String(req.body.pin || "");
+      const userId = req.user.userId;
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "Invalid amount" });
-    }
-
-    if (pin.length !== 4) {
-      return res.status(400).json({ message: "Invalid PIN format" });
-    }
-
-    const user = await User.findOne({ userId });
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    if (user.isFrozen) {
-      return res.status(403).json({ message: "Account is frozen" });
-    }
-
-    // 🔒 Check if PIN locked
-    if (
-      user.withdrawPinLockedUntil &&
-      user.withdrawPinLockedUntil > new Date()
-    ) {
-      return res.status(403).json({
-        message: "Too many wrong PIN attempts. Try again later."
-      });
-    }
-
-    const isMatch = await bcrypt.compare(pin, user.withdrawPin);
-
-    if (!isMatch) {
-
-      user.withdrawPinAttempts += 1;
-
-      // Lock after 5 wrong attempts
-      if (user.withdrawPinAttempts >= 5) {
-        user.withdrawPinLockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-        user.withdrawPinAttempts = 0;
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ message: "Invalid amount" });
       }
 
+      if (pin.length !== 4) {
+        return res.status(400).json({ message: "Invalid PIN format" });
+      }
+
+      const user = await User.findOne({ userId });
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      if (user.isFrozen) {
+        return res.status(403).json({ message: "Account is frozen" });
+      }
+
+      // 🔒 Check if PIN locked
+      if (
+        user.withdrawPinLockedUntil &&
+        user.withdrawPinLockedUntil > new Date()
+      ) {
+        return res.status(403).json({
+          message: "Too many wrong PIN attempts. Try again later."
+        });
+      }
+
+      const isMatch = await bcrypt.compare(pin, user.withdrawPin);
+
+      if (!isMatch) {
+
+        user.withdrawPinAttempts += 1;
+
+        // Lock after 5 wrong attempts
+        if (user.withdrawPinAttempts >= 5) {
+          user.withdrawPinLockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+          user.withdrawPinAttempts = 0;
+        }
+
+        await user.save();
+
+        return res.status(400).json({
+          message: "Invalid Withdraw PIN"
+        });
+      }
+
+      // ✅ Reset attempts on success
+      user.withdrawPinAttempts = 0;
+      user.withdrawPinLockedUntil = null;
       await user.save();
 
-      return res.status(400).json({
-        message: "Invalid Withdraw PIN"
-      });
-    }
+      // 🔥 Atomic deduction
+      const updateResult = await User.updateOne(
+        {
+          _id: user._id,
+          walletBalance: { $gte: amount }
+        },
+        {
+          $inc: { walletBalance: -amount }
+        }
+      );
 
-    // ✅ Reset attempts on success
-    user.withdrawPinAttempts = 0;
-    user.withdrawPinLockedUntil = null;
-    await user.save();
-
-    // 🔥 Atomic deduction
-    const updateResult = await User.updateOne(
-      {
-        _id: user._id,
-        walletBalance: { $gte: amount }
-      },
-      {
-        $inc: { walletBalance: -amount }
+      if (updateResult.modifiedCount === 0) {
+        return res.status(400).json({ message: "Insufficient balance" });
       }
-    );
 
-    if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: "Insufficient balance" });
+      const withdrawId = generateTransactionId("withdraw");
+
+      await Transaction.create({
+        userId,
+        orderId: withdrawId,
+        type: "withdraw",
+        amount,
+        status: "processing",
+        description: "Withdrawal Request"
+      });
+
+      const io = req.app.get("io");
+      if (io) {
+        io.to("admin_room").emit("withdraw_updated");
+        io.to("admin_room").emit("transaction_updated");
+      }
+
+      res.json({
+        message: "Withdrawal request submitted",
+        status: "processing"
+      });
+
+    } catch (error) {
+      console.error("Withdraw error:", error);
+      res.status(500).json({ message: "Withdraw failed" });
     }
-
-    const withdrawId = generateTransactionId("withdraw");
-
-    await Transaction.create({
-      userId,
-      orderId: withdrawId,
-      type: "withdraw",
-      amount,
-      status: "processing",
-      description: "Withdrawal Request"
-    });
-
-    const io = req.app.get("io");
-    if (io) {
-      io.to("admin_room").emit("withdraw_updated");
-      io.to("admin_room").emit("transaction_updated");
-    }
-
-    res.json({
-      message: "Withdrawal request submitted",
-      status: "processing"
-    });
-
-  } catch (error) {
-    console.error("Withdraw error:", error);
-    res.status(500).json({ message: "Withdraw failed" });
-  }
-});
+  });
 
 module.exports = router;
