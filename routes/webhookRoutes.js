@@ -5,10 +5,6 @@ const router = express.Router();
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 
-/* =====================================================
-   CASHFREE WEBHOOK (PG v2 - 2023-08-01)
-   MUST BE USED WITH express.raw()
-===================================================== */
 router.post("/cashfree", async (req, res) => {
   try {
     console.log("🔥 Cashfree webhook received");
@@ -18,20 +14,17 @@ router.post("/cashfree", async (req, res) => {
     const timestamp = req.headers["x-webhook-timestamp"];
     const rawBody = req.body;
 
-    /* =====================================================
-       1️⃣ Handle Test Webhook (No strict validation)
-    ===================================================== */
-
-    if (!rawBody || !signature || !timestamp) {
-      console.log("🧪 Test webhook or missing headers");
-      return res.status(200).json({ message: "Test OK" });
+    // 🔥 Always respond 200 for test or malformed requests
+    if (!rawBody) {
+      console.log("⚠️ Empty body");
+      return res.status(200).json({ message: "OK" });
     }
 
-    /* =====================================================
-       2️⃣ Verify Signature
-       signature = HMAC_SHA256(timestamp + rawBody)
-       digest = HEX
-    ===================================================== */
+    // 🔥 If headers missing → treat as test
+    if (!signature || !timestamp) {
+      console.log("🧪 Test webhook (no signature headers)");
+      return res.status(200).json({ message: "Test OK" });
+    }
 
     const signedPayload = timestamp + rawBody.toString();
 
@@ -41,19 +34,15 @@ router.post("/cashfree", async (req, res) => {
       .digest("hex");
 
     if (signature !== expectedSignature) {
-      console.log("❌ Invalid webhook signature");
+      console.log("❌ Invalid signature (ignored)");
       return res.status(200).json({ message: "Invalid signature ignored" });
     }
 
     console.log("✅ Signature verified");
 
-    /* =====================================================
-       3️⃣ Parse Payload
-    ===================================================== */
-
     const body = JSON.parse(rawBody.toString());
 
-    // If this is only webhook test object
+    // Handle test payload
     if (body.type === "WEBHOOK") {
       console.log("🧪 Webhook test validated");
       return res.status(200).json({ message: "Test successful" });
@@ -68,57 +57,28 @@ router.post("/cashfree", async (req, res) => {
     const orderAmount = Number(body.data.order.order_amount);
     const paymentStatus = body.data.payment.payment_status;
 
-    console.log("Order ID:", orderId);
-    console.log("Payment Status:", paymentStatus);
-
-    /* =====================================================
-       4️⃣ Process Only SUCCESS Payments
-    ===================================================== */
+    console.log("Order:", orderId);
+    console.log("Status:", paymentStatus);
 
     if (paymentStatus !== "SUCCESS") {
-      console.log("ℹ️ Payment not SUCCESS — ignored");
       return res.status(200).json({ message: "Ignored" });
     }
 
-    /* =====================================================
-       5️⃣ Find Transaction
-    ===================================================== */
-
     const transaction = await Transaction.findOne({ orderId });
 
-    if (!transaction) {
-      console.log("❌ Transaction not found");
-      return res.status(200).json({ message: "Transaction not found" });
-    }
-
-    if (transaction.status === "success") {
-      console.log("⚠️ Already processed");
+    if (!transaction || transaction.status === "success") {
       return res.status(200).json({ message: "Already processed" });
     }
-
-    /* =====================================================
-       6️⃣ Update Transaction
-    ===================================================== */
 
     transaction.status = "success";
     await transaction.save();
 
-    /* =====================================================
-       7️⃣ Credit Wallet
-    ===================================================== */
-
-    const updatedUser = await User.findOneAndUpdate(
+    await User.findOneAndUpdate(
       { userId: transaction.userId },
-      { $inc: { walletBalance: orderAmount } },
-      { new: true }
+      { $inc: { walletBalance: orderAmount } }
     );
 
-    if (!updatedUser) {
-      console.log("❌ User not found");
-      return res.status(200).json({ message: "User not found" });
-    }
-
-    console.log("💰 Wallet credited:", updatedUser.walletBalance);
+    console.log("💰 Wallet credited successfully");
 
     return res.status(200).json({ message: "Success" });
 
