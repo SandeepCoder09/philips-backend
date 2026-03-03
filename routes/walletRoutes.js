@@ -95,12 +95,15 @@ router.post("/create-order", authMiddleware, async (req, res) => {
     const orderId = generateTransactionId("recharge");
 
     const orderRequest = {
-      order_amount: Number(amount),
+      order_amount: amount,
       order_currency: "INR",
       order_id: orderId,
       customer_details: {
         customer_id: userId.toString(),
         customer_phone: user.mobile
+      },
+      order_meta: {
+        notify_url: "https://philips-backend.onrender.com/api/webhook/cashfree"
       }
     };
 
