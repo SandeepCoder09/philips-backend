@@ -49,8 +49,6 @@ const bankAccountSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-bankAccountSchema.index({ userId: 1 }, { unique: true });
-
 module.exports =
   mongoose.models.BankAccount ||
   mongoose.model("BankAccount", bankAccountSchema);
