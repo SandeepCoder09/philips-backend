@@ -1,9 +1,5 @@
 const mongoose = require("mongoose");
 
-TransactionSchema.index({ userId: 1 });
-TransactionSchema.index({ orderId: 1 });
-TransactionSchema.index({ createdAt: -1 });
-
 const transactionSchema = new mongoose.Schema(
   {
 
