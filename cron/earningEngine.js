@@ -7,9 +7,9 @@ const Transaction = require("../models/Transaction");
 // CONFIG
 // ==============================
 const COMMISSION = {
-  1: 0.05,
-  2: 0.03,
-  3: 0.02
+  1: 0.03,
+  2: 0.01,
+  3: 0.01
 };
 
 // ==============================
