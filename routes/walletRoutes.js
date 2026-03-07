@@ -70,6 +70,18 @@ router.post("/bind-bank", authMiddleware, async (req, res) => {
       });
     }
 
+    /* check duplicate bank */
+    const duplicateBank = await BankAccount.findOne({
+      accountNumber,
+      ifsc: ifsc.toUpperCase()
+    });
+
+    if (duplicateBank) {
+      return res.status(400).json({
+        message: "This bank account is already registered"
+      });
+    }
+
     /* ===============================
        4️⃣ Create Bank Record
     =============================== */
@@ -182,8 +194,10 @@ router.post("/usdt-deposit", authMiddleware, async (req, res) => {
     const { amount, txnHash } = req.body;
     const userId = req.user.userId;
 
-    if (!amount || !txnHash) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!/^[A-Fa-f0-9]{64}$/.test(txnHash)) {
+      return res.status(400).json({
+        message: "Invalid transaction hash format"
+      });
     }
 
     const existing = await UsdtDeposit.findOne({ txnHash });
@@ -229,7 +243,11 @@ router.get("/balance", authMiddleware, async (req, res) => {
       userId: req.user.userId
     }).select("walletBalance");
 
-    res.json({ balance: user?.walletBalance || 0 });
+    if (!user) {
+      return res.json({ balance: 0 });
+    }
+
+    res.json({ balance: user.walletBalance });
 
   } catch (error) {
     res.status(500).json({ message: "Error fetching balance" });
@@ -272,7 +290,13 @@ router.post(
   authMiddleware,
   async (req, res) => {
     try {
-      const amount = Number(req.body.amount);
+      const amount = parseInt(req.body.amount, 10);
+
+      if (!Number.isInteger(amount)) {
+        return res.status(400).json({
+          message: "Invalid amount format"
+        });
+      }
       const pin = String(req.body.pin || "");
       const userId = req.user.userId;
 
@@ -302,8 +326,10 @@ router.post(
       /* ===============================
          2️⃣ Validate PIN Format
       =============================== */
-      if (pin.length !== 4) {
-        return res.status(400).json({ message: "Invalid PIN format" });
+      if (!/^\d{4}$/.test(pin)) {
+        return res.status(400).json({
+          message: "PIN must be 4 digits"
+        });
       }
 
       /* ===============================
