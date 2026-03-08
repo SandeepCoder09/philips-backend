@@ -158,6 +158,22 @@ app.get("/ping", (req, res) => {
   });
 });
 
+app.get("/health", async (req, res) => {
+  try {
+    const mongoose = require("mongoose");
+
+    res.json({
+      status: "ok",
+      uptime: process.uptime(),
+      database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+      memory: process.memoryUsage(),
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ status: "error" });
+  }
+});
+
 /* =====================================================
    SERVE FRONTEND (IMPORTANT 🔥)
 ===================================================== */
@@ -177,6 +193,7 @@ app.use("/api/products", require("./routes/products"));
 app.use("/api/gift", require("./routes/gift"));
 app.use("/api/wallet", require("./routes/walletRoutes"));
 app.use("/api/usdt", require("./routes/usdtRoutes"));
+app.use("/api/upload", require("./routes/uploadRoutes"));
 
 /* =====================================================
    404 HANDLER
