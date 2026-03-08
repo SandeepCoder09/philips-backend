@@ -128,11 +128,22 @@ router.get("/banks", authMiddleware, async (req, res) => {
 ===================================================== */
 router.post("/create-order", authMiddleware, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const amount = Number(req.body.amount);
     const userId = req.user.userId;
 
-    if (!amount || amount < 1) {
-      return res.status(400).json({ message: "Minimum recharge is ₹1" });
+    const allowedAmounts = [399, 1499, 4999, 9499, 49999, 99999];
+
+    if (!allowedAmounts.includes(Number(amount))) {
+      return res.status(400).json({
+        message: "Invalid recharge amount"
+      });
+    }
+
+    // Maximum amount protection
+    if (amount > 100000) {
+      return res.status(400).json({
+        message: "Amount too large"
+      });
     }
 
     const user = await User.findOne({ userId });
