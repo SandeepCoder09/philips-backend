@@ -51,8 +51,10 @@ app.use(
         imgSrc: [
           "'self'",
           "data:",
+          "http://localhost:5001",
           "https://philips-backend.onrender.com",
-          "https://philipsfuturelighting24.vercel.app"
+          "https://philipsfuturelighting24.vercel.app",
+          "https://bright24futurelighting.com"
         ],
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'"]
@@ -74,7 +76,11 @@ app.use(
 ===================================================== */
 const io = new Server(server, {
   cors: {
-    origin: true,
+    origin: [
+      "http://localhost:5500",
+      "https://philipsfuturelighting24.vercel.app",
+      "https://bright24futurelighting.com"
+    ],
     credentials: true
   },
   transports: ["websocket", "polling"]
@@ -178,9 +184,11 @@ app.get("/health", async (req, res) => {
    SERVE FRONTEND (IMPORTANT 🔥)
 ===================================================== */
 
-app.use(
-  express.static(path.join(__dirname, "../philips"))
-);
+const frontendPath = path.join(__dirname, "../philips");
+
+if (require("fs").existsSync(frontendPath)) {
+  app.use(express.static(frontendPath));
+};
 
 /* =====================================================
    API ROUTES
@@ -237,3 +245,21 @@ server.listen(PORT, () => {
   }
 });
 
+const rateLimit = require("express-rate-limit");
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500
+});
+
+app.use("/api", limiter);
+
+process.on("SIGINT", () => {
+  console.log("🛑 Shutting down server...");
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  console.log("🛑 Server terminated");
+  process.exit(0);
+});

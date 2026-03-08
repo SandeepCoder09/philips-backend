@@ -7,7 +7,8 @@ const adminLogger = require("../middleware/adminLogger");
 const UsdtDeposit = require("../models/UsdtDeposit");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
-
+const Product = require("../models/Product");
+const { upload, compressImage } = require("../middleware/upload");
 const { runDailyEarnings } = require("../cron/earningEngine");
 
 // =====================================================
@@ -238,5 +239,92 @@ router.post(
     }
   }
 );
+
+// =====================================================
+// CREATE PRODUCT (ADMIN)
+// =====================================================
+router.post(
+  "/create-product",
+  authMiddleware,
+  adminMiddleware,
+  upload.single("image"),
+  compressImage,
+  async (req, res) => {
+    try {
+
+      const {
+        code,
+        name,
+        price,
+        dailyIncome,
+        validityDays,
+        maxPurchaseLimit
+      } = req.body;
+
+      if (!code || !name || !price) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required fields"
+        });
+      }
+
+      const image = req.file
+        ? `/uploads/${req.file.filename}`
+        : null;
+
+      const product = new Product({
+        code,
+        name,
+        price,
+        dailyIncome,
+        validityDays,
+        maxPurchaseLimit,
+        image,
+        isActive: true
+      });
+
+      await product.save();
+
+      res.json({
+        success: true,
+        message: "Product created successfully",
+        product
+      });
+
+    } catch (error) {
+
+      console.error("Create Product Error:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Product creation failed"
+      });
+    }
+  }
+);
+
+// =====================================================
+// GET ALL PRODUCTS (ADMIN)
+// =====================================================
+
+router.get("/products", adminMiddleware, async (req, res) => {
+  try {
+
+    const products = await Product.find().sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      products
+    });
+
+  } catch (error) {
+    console.error("Fetch Products Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch products"
+    });
+  }
+});
 
 module.exports = router;
