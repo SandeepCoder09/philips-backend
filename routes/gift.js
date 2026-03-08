@@ -94,10 +94,11 @@ router.get("/all", adminMiddleware, async (req, res) => {
 /* =====================================================
    CLAIM GIFT (USER)
 ===================================================== */
+
 router.post("/claim", authMiddleware, async (req, res) => {
   try {
     const { code } = req.body;
-    const userId = req.user.userId; // ✅ numeric
+    const userId = req.user.userId;
 
     if (!code) {
       return res.status(400).json({ message: "Gift code required" });
@@ -105,71 +106,66 @@ router.post("/claim", authMiddleware, async (req, res) => {
 
     const formattedCode = code.toUpperCase().trim();
 
+    // Fetch gift with minimal fields
     const gift = await GiftCode.findOne({
       code: formattedCode,
       active: true
-    });
+    }).select("amountPerUser remainingAmount expiresAt");
 
     if (!gift) {
       return res.status(404).json({ message: "Invalid Gift Code" });
     }
 
     // Expiry check
-    if (gift.expiresAt < new Date()) {
-      gift.active = false;
-      await gift.save();
+    if (gift.expiresAt && gift.expiresAt < new Date()) {
+      await GiftCode.updateOne(
+        { _id: gift._id },
+        { active: false }
+      );
+
       return res.status(400).json({ message: "Gift Code Expired" });
     }
 
-    // Already claimed check
-    if (gift.claimedUsers.includes(userId)) {
-      return res.status(400).json({
-        message: "You already collected this gift"
-      });
-    }
-
-    // Balance check
-    if (gift.remainingAmount < gift.amountPerUser) {
-      gift.active = false;
-      await gift.save();
-      return res.status(400).json({ message: "Gift Code Over" });
-    }
-
-    // Atomic deduction
+    // Atomic deduction + duplicate protection
     const updatedGift = await GiftCode.findOneAndUpdate(
       {
         _id: gift._id,
-        remainingAmount: { $gte: gift.amountPerUser }
+        remainingAmount: { $gte: gift.amountPerUser },
+        claimedUsers: { $ne: userId } // prevents duplicate claims
       },
       {
         $inc: { remainingAmount: -gift.amountPerUser },
         $push: { claimedUsers: userId }
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!updatedGift) {
-      return res.status(400).json({ message: "Gift Code Over" });
+      return res.status(400).json({
+        message: "Gift Code Over or Already Claimed"
+      });
     }
 
     // Auto deactivate if empty
     if (updatedGift.remainingAmount < updatedGift.amountPerUser) {
-      updatedGift.active = false;
-      await updatedGift.save();
+      await GiftCode.updateOne(
+        { _id: updatedGift._id },
+        { active: false }
+      );
     }
 
-    // Credit wallet
+    // Credit wallet atomically
     const updatedUser = await User.findOneAndUpdate(
       { userId },
       { $inc: { walletBalance: gift.amountPerUser } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Create transaction
+    // Create transaction record
     const transactionId = generateTransactionId("gift");
 
     await Transaction.create({
@@ -182,9 +178,10 @@ router.post("/claim", authMiddleware, async (req, res) => {
     });
 
     return res.json({
+      success: true,
       message: `You received ₹${gift.amountPerUser}`,
       amount: gift.amountPerUser,
-      wallet: updatedUser.walletBalance
+      walletBalance: updatedUser.walletBalance
     });
 
   } catch (error) {

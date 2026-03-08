@@ -135,12 +135,26 @@ app.use(express.urlencoded({ extended: true }));
 /* =====================================================
    HEALTH CHECK
 ===================================================== */
+
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
     message: "SERVER IS WORKING 🚀",
     environment: process.env.NODE_ENV || "development",
     timestamp: new Date(),
+  });
+});
+
+/* =====================================================
+   PING ROUTE (FOR UPTIME MONITORING)
+===================================================== */
+
+app.get("/ping", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Server awake",
+    uptime: process.uptime(),
+    timestamp: new Date()
   });
 });
 
@@ -206,4 +220,3 @@ server.listen(PORT, () => {
   }
 });
 
-// update
