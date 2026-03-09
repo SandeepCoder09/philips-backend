@@ -131,7 +131,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
     const amount = Number(req.body.amount);
     const userId = req.user.userId;
 
-    const allowedAmounts = [399, 1499, 4999, 9499, 49999, 99999];
+    const allowedAmounts = [1, 399, 1499, 4999, 9499, 49999, 99999];
 
     if (!allowedAmounts.includes(Number(amount))) {
       return res.status(400).json({
