@@ -352,11 +352,23 @@ router.post(
       }
 
       /* ===============================
-         4️⃣ Verify PIN
+   4️⃣ Check If PIN Is Set
+=============================== */
+      if (!user.withdrawPin) {
+        return res.status(400).json({
+          message: "Withdraw PIN not set"
+        });
+      }
+
+      /* ===============================
+         4.1 Verify PIN
       =============================== */
       const isMatch = await bcrypt.compare(pin, user.withdrawPin);
+
       if (!isMatch) {
-        return res.status(400).json({ message: "Invalid Withdraw PIN" });
+        return res.status(400).json({
+          message: "Invalid Withdraw PIN"
+        });
       }
 
       /* ===============================
