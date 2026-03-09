@@ -9,7 +9,6 @@ const { Server } = require("socket.io");
 
 const connectDB = require("./config/db");
 
-
 dotenv.config();
 
 const app = express();
@@ -36,18 +35,29 @@ app.use(
   })
 );
 
+
+
 /* =====================================================
    BASIC SECURITY (Helmet)
-   🔥 CSP DISABLED FOR DEV (Live Server on 5500)
 ===================================================== */
 app.disable("x-powered-by");
 
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // 🔥 IMPORTANT
+    crossOriginResourcePolicy: false,
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'"],
+        defaultSrc: [
+          "'self'",
+          "http://10.194.154.223:*",
+          "http://localhost:*"
+        ],
+        connectSrc: [
+          "'self'",
+          "http://10.194.154.223:*",
+          "http://localhost:*",
+          "https://philips-backend.onrender.com"
+        ],
         imgSrc: [
           "'self'",
           "data:",
@@ -78,6 +88,8 @@ const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:5500",
+      "http://10.194.154.223",
+      "http://10.194.154.223:5500",
       "https://philipsfuturelighting24.vercel.app",
       "https://bright24futurelighting.com"
     ],
@@ -152,7 +164,7 @@ app.get("/", (req, res) => {
 });
 
 /* =====================================================
-   PING ROUTE (FOR UPTIME MONITORING)
+   PING ROUTE
 ===================================================== */
 
 app.get("/ping", (req, res) => {
@@ -181,14 +193,26 @@ app.get("/health", async (req, res) => {
 });
 
 /* =====================================================
-   SERVE FRONTEND (IMPORTANT 🔥)
+   SERVE FRONTEND
 ===================================================== */
 
 const frontendPath = path.join(__dirname, "../philips");
 
 if (require("fs").existsSync(frontendPath)) {
   app.use(express.static(frontendPath));
-};
+}
+
+/* =====================================================
+   RATE LIMITER
+===================================================== */
+const rateLimit = require("express-rate-limit");
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500
+});
+
+app.use("/api", limiter);
 
 /* =====================================================
    API ROUTES
@@ -231,7 +255,7 @@ app.use((err, req, res, next) => {
 ===================================================== */
 const PORT = process.env.PORT || 5001;
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log("=======================================");
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
@@ -244,15 +268,6 @@ server.listen(PORT, () => {
     console.error("⚠ Earning Engine Failed:", error.message);
   }
 });
-
-const rateLimit = require("express-rate-limit");
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 500
-});
-
-app.use("/api", limiter);
 
 process.on("SIGINT", () => {
   console.log("🛑 Shutting down server...");
