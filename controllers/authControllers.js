@@ -198,17 +198,19 @@ const loginUser = async (req, res) => {
     const token = jwt.sign(
       {
         userId: user.userId,
-        mongoId: user._id,
-        isAdmin: user.isAdmin || false
+        id: user._id,
+        role: user.role,
+        isAdmin: true
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "1d" }
     );
 
     res.status(200).json({
       success: true,
       message: "Login successful",
       token,
+      role: user.role,   // ✅ ADD THIS
       user: {
         userId: user.userId,
         name: user.name,

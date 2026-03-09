@@ -5,7 +5,7 @@ const GiftCode = require("../models/GiftCode");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 
-const adminMiddleware = require("../middleware/adminMiddleware");
+const { adminMiddleware } = require("../middleware/adminMiddleware");
 const authMiddleware = require("../middleware/authMiddleware");
 const generateTransactionId = require("../utils/generateTransactionId");
 

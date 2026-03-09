@@ -327,11 +327,13 @@ exports.getAllWithdraws = async (req, res) => {
 
 
 // =====================================================
-// UPDATE WITHDRAW STATUS (STRICT + SAFE)
+// UPDATE WITHDRAW STATUS (ROLE + STATE SAFE)
 // =====================================================
 exports.updateWithdrawStatus = async (req, res) => {
   try {
+
     const { status } = req.body;
+    const adminRole = req.user.role;
 
     const transaction = await Transaction.findById(req.params.id);
 
@@ -341,57 +343,101 @@ exports.updateWithdrawStatus = async (req, res) => {
 
     const currentStatus = transaction.status;
 
-    // 🔒 Final state protection
+    // 🔒 Prevent editing finalized withdraws
     if (["success", "rejected"].includes(currentStatus)) {
       return res.status(400).json({
         message: "Withdraw already finalized"
       });
     }
 
-    // 🔐 Strict allowed transitions
-    const transitions = {
-      processing: ["under review", "rejected"],
-      "under review": ["success", "rejected"]
-    };
+    // =====================================================
+    // ROLE PERMISSIONS
+    // =====================================================
 
-    if (!transitions[currentStatus]?.includes(status)) {
-      return res.status(400).json({
-        message: `Invalid state transition from ${currentStatus} to ${status}`
-      });
+    // Manager can only move: processing → under review
+    if (status === "under review") {
+
+      if (!["manager_admin", "super_admin"].includes(adminRole)) {
+        return res.status(403).json({
+          message: "Manager or Super Admin required"
+        });
+      }
+
+      if (currentStatus !== "processing") {
+        return res.status(400).json({
+          message: "Only processing withdraw can move to under review"
+        });
+      }
+
     }
 
-    // 💰 Refund only when rejecting (and not already rejected)
+    // Only super admin can approve
+    if (status === "success") {
+
+      if (adminRole !== "super_admin") {
+        return res.status(403).json({
+          message: "Super Admin access required"
+        });
+      }
+
+      if (currentStatus !== "under review") {
+        return res.status(400).json({
+          message: "Withdraw must be under review before approval"
+        });
+      }
+
+    }
+
+    // Reject allowed for both
     if (status === "rejected") {
+
+      if (!["manager_admin", "super_admin"].includes(adminRole)) {
+        return res.status(403).json({
+          message: "Admin access required"
+        });
+      }
+
+      // refund wallet
       await User.findOneAndUpdate(
         { userId: transaction.userId },
         { $inc: { walletBalance: transaction.amount } }
       );
     }
 
-    // ✅ Update status
+    // =====================================================
+    // UPDATE STATUS
+    // =====================================================
+
     transaction.status = status;
 
-    // 📝 Audit log
     transaction.auditLog.push({
       action: status,
       adminId: req.user._id,
+      role: adminRole,
       ip: req.ip,
       timestamp: new Date()
     });
 
     await transaction.save();
 
-    // 🔥 Real-time emit
+    // 🔥 REAL TIME
     const io = req.app.get("io");
     if (io) {
       io.to("admin_room").emit("withdraw_updated");
       io.to("admin_room").emit("transaction_updated");
     }
 
-    res.json({ message: "Withdraw updated successfully" });
+    res.json({
+      message: "Withdraw updated successfully"
+    });
 
   } catch (error) {
+
     console.error("Withdraw Update Error:", error);
-    res.status(500).json({ message: "Server Error" });
+
+    res.status(500).json({
+      message: "Server Error"
+    });
+
   }
 };

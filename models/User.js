@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
+
     /* ================= BASIC INFO ================= */
 
     name: {
@@ -17,13 +18,13 @@ const userSchema = new mongoose.Schema(
       trim: true
     },
 
-    // 🔹 NEW EMAIL FIELD (Required for Admin Only)
+    // Email required for admin accounts
     email: {
       type: String,
       trim: true,
       lowercase: true,
       unique: true,
-      sparse: true // allows normal users without email
+      sparse: true
     },
 
     password: {
@@ -56,6 +57,11 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0
+    },
+
+    usdtBalance: {
+      type: Number,
+      default: 0
     },
 
     /* ================= NUMERIC USER ID ================= */
@@ -111,34 +117,31 @@ const userSchema = new mongoose.Schema(
       default: null
     },
 
-    // Withdraw Attempt and Lock
     withdrawPinAttempts: {
       type: Number,
       default: 0
     },
+
     withdrawPinLockedUntil: {
       type: Date,
       default: null
     },
 
-    // USDT Balance Convert
-    usdtBalance: {
-      type: Number,
-      default: 0
+    /* ================= ROLE SYSTEM ================= */
+
+    role: {
+      type: String,
+      enum: ["user", "manager_admin", "super_admin"],
+      default: "user",
+      index: true
     },
 
-    walletBalance: {
-      type: Number,
-      default: 0
-    },
-
-
-    /* ================= ROLE ================= */
-
+    // backward compatibility
     isAdmin: {
       type: Boolean,
       default: false
     }
+
   },
   {
     timestamps: true,
@@ -147,7 +150,7 @@ const userSchema = new mongoose.Schema(
       transform: function (doc, ret) {
         delete ret._id;
         delete ret.__v;
-        delete ret.password; // 🔐 NEVER expose password
+        delete ret.password;
         return ret;
       }
     }
@@ -158,10 +161,19 @@ const userSchema = new mongoose.Schema(
    ADMIN VALIDATION
 ===================================================== */
 
-userSchema.pre("save", function () {
-  if (this.isAdmin && !this.email) {
+userSchema.pre("save", async function () {
+
+  if (
+    (this.role === "manager_admin" || this.role === "super_admin") &&
+    !this.email
+  ) {
     throw new Error("Admin must have an email");
   }
+
+  if (this.role === "manager_admin" || this.role === "super_admin") {
+    this.isAdmin = true;
+  }
+
 });
 
 module.exports =

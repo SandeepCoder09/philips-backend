@@ -7,17 +7,17 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
 // Import user controllers
-const {
-  registerUser,
-  loginUser
-} = require("../controllers/authControllers");
+const { registerUser, loginUser } = require("../controllers/authControllers");
 
 
 /* =====================================================
    USER ROUTES
 ===================================================== */
 
+// Register user
 router.post("/register", registerUser);
+
+// Login user
 router.post("/login", loginUser);
 
 
@@ -32,14 +32,16 @@ router.post("/admin-login", async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({
-        message: "Email and password required"
+        success: false,
+        message: "Email and password are required"
       });
     }
 
     const user = await User.findOne({ email });
 
-    if (!user || !user.isAdmin) {
+    if (!user || !["manager_admin", "super_admin"].includes(user.role)) {
       return res.status(401).json({
+        success: false,
         message: "Invalid email or password"
       });
     }
@@ -48,6 +50,7 @@ router.post("/admin-login", async (req, res) => {
 
     if (!isMatch) {
       return res.status(401).json({
+        success: false,
         message: "Invalid email or password"
       });
     }
@@ -55,6 +58,7 @@ router.post("/admin-login", async (req, res) => {
     const token = jwt.sign(
       {
         id: user._id,
+        role: user.role,
         isAdmin: true
       },
       process.env.JWT_SECRET,
@@ -62,77 +66,103 @@ router.post("/admin-login", async (req, res) => {
     );
 
     res.json({
+      success: true,
       message: "Admin login successful",
-      token
+      token,
+      role: user.role
     });
 
   } catch (error) {
     console.error("Admin login error:", error);
-    res.status(500).json({ message: "Server error" });
+
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 });
 
 
 /* =====================================================
-   CREATE ADMIN (POSTMAN USE ONLY)
+   CREATE ADMIN (FOR INITIAL SETUP / POSTMAN)
 ===================================================== */
 
-router.post("/create-admin", async (req, res) => {
-  try {
+const { adminMiddleware, superAdminOnly } = require("../middleware/adminMiddleware");
 
-    const { name, email, password, mobile } = req.body;
+router.post(
+  "/create-admin",
+  adminMiddleware,
+  superAdminOnly,
+  async (req, res) => {
 
-    if (!name || !email || !password || !mobile) {
-      return res.status(400).json({
-        message: "Name, email, password and mobile required"
+    try {
+
+      const { name, email, password, mobile, role } = req.body;
+
+      if (!name || !email || !password || !mobile || !role) {
+        return res.status(400).json({
+          success: false,
+          message: "Name, email, password, mobile and role are required"
+        });
+      }
+
+      if (!["manager_admin", "super_admin"].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: "Role must be manager_admin or super_admin"
+        });
+      }
+
+      const emailExists = await User.findOne({ email });
+      if (emailExists) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already exists"
+        });
+      }
+
+      const mobileExists = await User.findOne({ mobile });
+      if (mobileExists) {
+        return res.status(400).json({
+          success: false,
+          message: "Mobile already exists"
+        });
+      }
+
+
+
+      const lastUser = await User.findOne().sort({ userId: -1 });
+      const nextUserId = lastUser ? lastUser.userId + 1 : 1000;
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const admin = await User.create({
+        name,
+        email,
+        mobile,
+        userId: nextUserId,
+        password: hashedPassword,
+        walletBalance: 0,
+        role,
+        isAdmin: true
+      });
+
+      res.json({
+        success: true,
+        message: "Admin created successfully",
+        admin
+      });
+
+    } catch (error) {
+      console.error("Create admin error:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Error creating admin",
+        error: error.message
       });
     }
-
-    // Check duplicate email
-    const existingEmail = await User.findOne({ email });
-    if (existingEmail) {
-      return res.status(400).json({
-        message: "Email already exists"
-      });
-    }
-
-    // Check duplicate mobile
-    const existingMobile = await User.findOne({ mobile });
-    if (existingMobile) {
-      return res.status(400).json({
-        message: "Mobile already exists"
-      });
-    }
-
-    // Auto-generate next userId
-    const lastUser = await User.findOne().sort({ userId: -1 });
-    const nextUserId = lastUser ? lastUser.userId + 1 : 1000;
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const admin = await User.create({
-      name,
-      email,
-      mobile,
-      userId: nextUserId,
-      password: hashedPassword,
-      walletBalance: 0,
-      isAdmin: true
-    });
-
-    res.json({
-      message: "Admin created successfully",
-      admin
-    });
-
-  } catch (error) {
-    console.error("Create admin error:", error);
-    res.status(500).json({
-  message: "Error creating admin",
-  error: error.message
-});
-  }
-});
+  });
 
 
 module.exports = router;

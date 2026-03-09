@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const adminMiddleware = require("../middleware/adminMiddleware");
+const { adminMiddleware, superAdminOnly } = require("../middleware/adminMiddleware");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminLogger = require("../middleware/adminLogger");
 const UsdtDeposit = require("../models/UsdtDeposit");
@@ -61,7 +61,6 @@ router.get("/withdraws", adminMiddleware, getAllWithdraws);
 router.put(
   "/withdraw/:id",
   adminMiddleware,
-  adminLogger("UPDATE_WITHDRAW_STATUS"),
   updateWithdrawStatus
 );
 
@@ -129,6 +128,7 @@ router.post(
   "/usdt-approve/:id",
   authMiddleware,
   adminMiddleware,
+  superAdminOnly,
   async (req, res) => {
     try {
 

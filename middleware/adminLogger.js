@@ -1,18 +1,33 @@
 const AdminLog = require("../models/AdminLog");
 
-module.exports = function(action) {
+module.exports = function (action) {
   return async (req, res, next) => {
     try {
+
+      const targetUser =
+        req.body.userId ||
+        req.body.targetUserId ||
+        req.body.id ||
+        null;
+
+      const ip =
+        req.headers["x-forwarded-for"] ||
+        req.socket.remoteAddress ||
+        req.ip;
+
       await AdminLog.create({
         adminId: req.user.id,
+        adminRole: req.user.role,
         action,
-        targetUserId: req.body.userId || null,
+        targetUserId: targetUser,
         metadata: req.body,
-        ipAddress: req.ip
+        ipAddress: ip
       });
+
     } catch (err) {
-      console.log("Log Error:", err.message);
+      console.log("Admin Log Error:", err.message);
     }
+
     next();
   };
 };
