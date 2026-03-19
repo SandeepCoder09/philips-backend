@@ -226,6 +226,8 @@ app.use("/api/gift", require("./routes/gift"));
 app.use("/api/wallet", require("./routes/walletRoutes"));
 app.use("/api/usdt", require("./routes/usdtRoutes"));
 app.use("/api/upload", require("./routes/uploadRoutes"));
+const liveRoutes = require(path.join(__dirname, "routes", "liveRoutes.js"));
+app.use("/api/live", liveRoutes);
 
 /* =====================================================
    404 HANDLER
