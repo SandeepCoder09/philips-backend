@@ -295,12 +295,36 @@ router.get("/transactions", authMiddleware, async (req, res) => {
 /* =====================================================
    SECURE WITHDRAW (STABLE - TRANSACTION BASED)
 ===================================================== */
+/* ===============================
+   ⏰ TIME CHECK FUNCTION (IST)
+=============================== */
+function isWithinWithdrawTime() {
+  const now = new Date();
+
+  const ist = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+  );
+
+  const hour = ist.getHours();
+
+  return hour >= 9 && hour < 18; // 9:00 AM to 5:59 PM
+}
+
 router.post(
   "/withdraw",
   withdrawLimiter,
   authMiddleware,
   async (req, res) => {
     try {
+      /* ===============================
+         ⏰ TIME RESTRICTION (9 AM - 6 PM)
+      =============================== */
+      if (!isWithinWithdrawTime()) {
+        return res.status(403).json({
+          message: "Withdraw allowed only between 9 AM to 6 PM"
+        });
+      }
+
       const amount = parseInt(req.body.amount, 10);
 
       if (!Number.isInteger(amount)) {
@@ -308,6 +332,7 @@ router.post(
           message: "Invalid amount format"
         });
       }
+
       const pin = String(req.body.pin || "");
       const userId = req.user.userId;
 
@@ -430,4 +455,3 @@ router.post(
 
 module.exports = router;
 
-//redeploy
